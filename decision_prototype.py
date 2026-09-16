@@ -78,10 +78,20 @@ st.header("2. Recommended rollout plan")
 st.subheader("What this assessment found")
 st.markdown(f"**Recommended approach**  \n{route}")
 st.markdown(f"**Why**  \n{reason}")
+ready_required=required[required.Status=="Ready"]
+ready_details=[f'{r["Information needed"]} — {r["Source system"]}, {r["Transfer method"].lower()}' for _,r in ready_required.iterrows()]
+action_details=[]
+if owner!="Named":action_details.append("Hospital decision-maker")
+if rules!="Documented and confirmed":action_details.append("Operating rules and exceptions")
+action_details.extend([f'{r["Information needed"]} — {r["Source system"]}' for _,r in critical.iterrows()])
 m1,m2,m3=st.columns(3)
 m1.metric("First rollout",department);m1.caption(f"{len(capabilities)} capabilities included")
-m2.metric("Required information ready",f'{int((required.Status=="Ready").sum())} of {len(required)}')
+m2.metric("Required information reported ready",f'{len(ready_required)} of {len(required)}')
+if ready_details:m2.caption("Ready:  \n"+"  \n".join(f"• {item}" for item in ready_details))
+else:m2.caption("No required information has been confirmed as ready.")
 m3.metric("Items to resolve before complete testing",items_to_resolve)
+if action_details:m3.caption("Resolve:  \n"+"  \n".join(f"• {item}" for item in action_details))
+else:m3.caption("Nothing identified from the current answers.")
 
 if critical.empty and rules=="Documented and confirmed" and owner=="Named":
     can_start=f"Set up the {department} workflow, give test users access and prepare normal and exception scenarios."
