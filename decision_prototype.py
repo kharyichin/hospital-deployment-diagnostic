@@ -60,22 +60,26 @@ def show_tour():
     st.write(body)
     left,middle,right=st.columns([1,1,1.4])
     if step>0 and left.button("Back",use_container_width=True):
-        st.session_state.tour_step-=1;st.rerun()
+        st.session_state.tour_step-=1
+        st.session_state.tour_scroll_target=TOUR_STEPS[st.session_state.tour_step][2]
+        st.rerun()
     if middle.button("End tour",use_container_width=True):
         st.session_state.tour_open=False;st.session_state.tour_finished=True;st.rerun()
-    label="Show this section" if step<len(TOUR_STEPS)-1 else "Show downloads"
+    label="Next" if step<len(TOUR_STEPS)-1 else "Finish tour"
     if right.button(label,type="primary",use_container_width=True):
-        st.session_state.tour_scroll_target=anchor
-        st.session_state.tour_open=False
-        if step<len(TOUR_STEPS)-1:st.session_state.tour_step+=1
-        else:st.session_state.tour_finished=True
+        if step<len(TOUR_STEPS)-1:
+            st.session_state.tour_step+=1
+            st.session_state.tour_scroll_target=TOUR_STEPS[st.session_state.tour_step][2]
+        else:
+            st.session_state.tour_scroll_target=anchor
+            st.session_state.tour_open=False
+            st.session_state.tour_finished=True
         st.rerun()
 
 title_col,tour_col=st.columns([5,1])
 title_col.title("Hospital Deployment Planning Diagnostic")
 tour_col.write("")
-tour_label="Quick tour" if st.session_state.tour_finished or st.session_state.tour_step==0 else f"Continue tour · {st.session_state.tour_step+1}/4"
-if tour_col.button(tour_label,use_container_width=True):
+if tour_col.button("Quick tour",use_container_width=True):
     if st.session_state.tour_finished:st.session_state.tour_step=0;st.session_state.tour_finished=False
     st.session_state.tour_open=True;st.rerun()
 st.write("Assess the proposed rollout, identify what controls the first launch, and build a practical hospital-specific plan.")
@@ -208,6 +212,8 @@ if saved_plan:
     if set(plan_df.columns).issubset(saved_plan_df.columns):plan_df=saved_plan_df[plan_df.columns]
 plan_df=st.data_editor(plan_df,hide_index=True,width="stretch",disabled=["Item","Action","Why this action appears","Owner","Supporting parties"],key=f"plan:{choice}:{form_key}",column_config={"Done":st.column_config.CheckboxColumn(width="small"),"Item":st.column_config.NumberColumn(width="small"),"Action":st.column_config.TextColumn(width="large"),"Why this action appears":st.column_config.TextColumn(width="large"),"Timing / status":st.column_config.TextColumn(help="Examples: Days 1–3; Do after item 2; Ongoing; Completed")})
 completed=int(plan_df["Done"].sum())
+open_actions=len(plan_df)-completed
+st.markdown(f'<span style="display:inline-block;background:#dcefe5;color:#155b39;padding:4px 10px;border-radius:999px;font-weight:600">{completed} completed</span> <span style="display:inline-block;background:#e7eef5;color:#174e68;padding:4px 10px;border-radius:999px;font-weight:600">{open_actions} remaining</span>',unsafe_allow_html=True)
 st.progress(completed/len(plan_df));st.caption(f"{completed} of {len(plan_df)} actions completed")
 def color_status(value):
     colors={"Ready":"background-color:#dcefe5;color:#155b39;font-weight:600","Temporary route available":"background-color:#fff0c9;color:#765100;font-weight:600","Connection required":"background-color:#dcecf4;color:#174e68;font-weight:600","Needs confirmation":"background-color:#eceeef;color:#39434a","Must wait":"background-color:#f6dddd;color:#7b2424;font-weight:600"}
@@ -241,6 +247,37 @@ for i,r in timing.iterrows():fig.add_trace(go.Bar(name=r["Work package"],y=["Rec
 fig.update_layout(barmode="overlay",xaxis_title="Week",xaxis=dict(dtick=1),height=240,margin=dict(l=0,r=0,t=10,b=0));st.plotly_chart(fig,width="stretch")
 st.caption("Rule confirmation and information preparation occupy the same weeks. Testing starts after both are complete. All ranges are editable planning assumptions.")
 
+st.subheader("Planning estimates")
+effort=pd.DataFrame([
+    ["Workflow discovery",3,5+complexity],
+    ["Rule confirmation",2,3+complexity],
+    ["Information and connection preparation",3,5+connections*2],
+    ["Configuration and workflow testing",5,8+connections],
+    ["User preparation and controlled launch",3,5+min(complexity,2)],
+],columns=["Work package","Estimated minimum person-days","Estimated maximum person-days"])
+saved_effort=loaded.get("effort_estimate")
+if saved_effort:
+    saved_effort_df=pd.DataFrame(saved_effort)
+    if set(effort.columns).issubset(saved_effort_df.columns):effort=saved_effort_df[effort.columns]
+effort=st.data_editor(effort,hide_index=True,width="stretch",disabled=["Work package"],key=f"effort:{choice}:{form_key}")
+effort_min=float(effort["Estimated minimum person-days"].sum());effort_max=float(effort["Estimated maximum person-days"].sum())
+average_fte_min=effort_min/max(total[1]*5,1);average_fte_max=effort_max/max(total[0]*5,1)
+e1,e2=st.columns(2)
+e1.metric("Estimated deployment-team effort",f"{effort_min:g}–{effort_max:g} person-days")
+e2.metric("Estimated average deployment-team capacity",f"{average_fte_min:.1f}–{average_fte_max:.1f} FTE")
+st.markdown("*Planning estimate only. Person-days and average FTE are derived from the selected conditions and editable assumptions, not observed staffing data.*")
+
+with st.expander("Estimate a later rollout wave"):
+    ex1,ex2,ex3=st.columns(3)
+    next_departments=ex1.number_input("Departments in the next wave",1,value=max(2,len(capabilities)),key=f"next_departments:{form_key}")
+    next_hospitals=ex2.number_input("Hospitals in the next wave",1,value=max(1,int(sites)),key=f"next_hospitals:{form_key}")
+    reuse=ex3.selectbox("How much of the first rollout can be reused?",["Most of it","Some of it","Very little"],key=f"reuse:{form_key}")
+    reuse_ranges={"Most of it":(2,4),"Some of it":(4,7),"Very little":(6,10)}
+    wave_min,wave_max=reuse_ranges[reuse]
+    wave_min+=max(0,next_hospitals-1);wave_max+=max(0,next_hospitals-1)*2+max(0,next_departments-2)
+    st.metric("Estimated time for the next rollout wave",f"{wave_min}–{wave_max} weeks")
+    st.markdown("*Scenario estimate for planning. It assumes departments within the wave can overlap and must be replaced with actual results from the first rollout.*")
+
 st.header("4. Potential issues and flags")
 watch=[]
 if variation!="Same process in first-wave departments":watch.append(["Department variation","Managers describe different rules or exceptions for the same work.","Compare first-wave departments before copying a configuration.","Before configuration","Likely","Major"])
@@ -261,7 +298,9 @@ watch_df["Score"]=watch_df["Likelihood"].map(likelihood_score).fillna(2)*watch_d
 watch_df["Priority"]=watch_df["Score"].apply(lambda value:"High" if value>=6 else "Medium" if value>=3 else "Low")
 priority_view=watch_df.sort_values(["Score","Potential issue"],ascending=[False,True])[["Priority","Potential issue","Likelihood","Impact","Recommended response"]]
 st.markdown("**Priority order**")
-st.dataframe(priority_view,hide_index=True,width="stretch")
+def color_priority(value):
+    return {"High":"background-color:#f6dddd;color:#7b2424;font-weight:700","Medium":"background-color:#fff0c9;color:#765100;font-weight:700","Low":"background-color:#dcefe5;color:#155b39;font-weight:700"}.get(value,"")
+st.dataframe(priority_view.style.map(color_priority,subset=["Priority"]),hide_index=True,width="stretch")
 watch=watch_df.values.tolist()
 st.header("5. Deployment decision brief")
 states=required.Status.tolist()
@@ -286,7 +325,7 @@ st.markdown("**Before expanding**  \nConfirm that the department is using the wo
 
 st.header("6. Download working files")
 safe_department=re.sub(r"[^a-z0-9]+","_",department.lower()).strip("_") or "department"
-assessment={"selection":choice,"scope":{"solution":solution,"capabilities":capabilities,"department":department,"staff_groups":staff,"hospitals":sites},"hospital_context":{"type":profile,"current_owner":governance,"process_variation":variation,"manual_work":manual,"exceptions":exceptions,"rules":rules,"labor_rules":labor,"decision_owner":owner,"approvers":approvers},"recommended_rollout":{"route":route,"reason":reason,"main_dependency":critical_text,"estimated_timeline_weeks":{"minimum":total[0],"maximum":total[1]}},"information_dependencies":df.to_dict("records"),"action_plan":plan_df.to_dict("records"),"timeline":timing.to_dict("records"),"potential_issues":[{"potential_issue":r["Potential issue"],"warning_sign":r["Warning sign"],"recommended_response":r["Recommended response"],"review_point":r["Review point"],"likelihood":r["Likelihood"],"impact":r["Impact"],"priority":r["Priority"]} for _,r in watch_df.iterrows()]}
+assessment={"selection":choice,"scope":{"solution":solution,"capabilities":capabilities,"department":department,"staff_groups":staff,"hospitals":sites},"hospital_context":{"type":profile,"current_owner":governance,"process_variation":variation,"manual_work":manual,"exceptions":exceptions,"rules":rules,"labor_rules":labor,"decision_owner":owner,"approvers":approvers},"recommended_rollout":{"route":route,"reason":reason,"main_dependency":critical_text,"estimated_timeline_weeks":{"minimum":total[0],"maximum":total[1]}},"information_dependencies":df.to_dict("records"),"action_plan":plan_df.to_dict("records"),"timeline":timing.to_dict("records"),"effort_estimate":effort.to_dict("records"),"expansion_estimate":{"departments":next_departments,"hospitals":next_hospitals,"reuse":reuse,"minimum_weeks":wave_min,"maximum_weeks":wave_max},"potential_issues":[{"potential_issue":r["Potential issue"],"warning_sign":r["Warning sign"],"recommended_response":r["Recommended response"],"review_point":r["Review point"],"likelihood":r["Likelihood"],"impact":r["Impact"],"priority":r["Priority"]} for _,r in watch_df.iterrows()]}
 e1,e2,e3,e4=st.columns(4)
 e1.download_button("Download action plan",plan_df.to_csv(index=False),f"hospital_deployment_action_plan_{safe_department}.csv","text/csv")
 e2.download_button("Download dependencies",df.to_csv(index=False),f"hospital_deployment_dependencies_{safe_department}.csv","text/csv")
