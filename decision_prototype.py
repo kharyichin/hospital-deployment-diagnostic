@@ -177,40 +177,35 @@ elif rules!="Documented and confirmed":
 else:
     recommended_next_move="Name the hospital decision-maker before configuration begins."
     playbook_name="Decision ownership"
-st.markdown(f"**Recommended next move**  \n{recommended_next_move}")
-action_details=[]
-if owner!="Named":action_details.append("Hospital decision-maker")
-if rules!="Documented and confirmed":action_details.append("Operating rules and exceptions")
-action_details.extend([f'{r["Information needed"]} — {r["Source system"]}' for _,r in critical.iterrows()])
+with st.container(border=True):
+    st.markdown("**Recommended next move**")
+    st.subheader(recommended_next_move)
 m1,m2,m3=st.columns(3)
 m1.metric("Can complete workflow testing start?","Yes" if testing_ready else "Not yet")
-if not testing_ready:m1.caption(f"Testing waits until {items_to_resolve} unresolved {'item is' if items_to_resolve==1 else 'items are'} addressed.")
 m2.metric("Required information reported ready",f'{len(ready_required)} of {len(required)}')
-if ready_details:m2.caption("Ready:  \n"+"  \n".join(f"• {item}" for item in ready_details))
-else:m2.caption("No required information has been confirmed as ready.")
 m3.metric("Items to resolve before complete testing",items_to_resolve)
-if action_details:m3.caption("Resolve:  \n"+"  \n".join(f"• {item}" for item in action_details))
-else:m3.caption("Nothing identified from the current answers.")
 
-if critical.empty and rules=="Documented and confirmed" and owner=="Named":
-    can_start=f"Set up the {department} workflow, give test users access and prepare normal and exception scenarios."
-else:
-    can_start=f"Observe the current {department} workflow, confirm the first rollout scope and begin work that does not depend on unresolved information."
 resolve=[]
 if owner!="Named":resolve.append("Name the hospital decision-maker for this rollout.")
 if rules!="Documented and confirmed":resolve.append("Confirm the operating rules and exceptions used by the first department.")
 for _,r in critical.iterrows():
     issue_text={"Needs confirmation":"the source or transfer method has not been confirmed","Connection required":"a new connection must be built and tested","Temporary route available":"the source system is changing, but a temporary transfer may be used","Must wait":"the information is unavailable and no alternative has been approved"}[r["Status"]]
     resolve.append(f'{r["Information needed"]} from {r["Source system"]}: {issue_text}.')
-left,right=st.columns(2)
-with left:
-    st.markdown("**What can start now**")
-    st.write(can_start)
-with right:
-    st.markdown("**Resolve before complete testing**")
+ready_summary=[]
+if owner=="Named":ready_summary.append("Hospital decision-maker named")
+if rules=="Documented and confirmed":ready_summary.append("Operating rules and exceptions confirmed")
+ready_summary.extend(ready_details)
+left,right=st.columns(2,gap="large")
+with left.container(border=True):
+    st.markdown("**Confirmed and ready**")
+    if ready_summary:
+        for item in ready_summary:st.write(f"✓ {item}")
+    else:st.write("Nothing has been confirmed as ready.")
+with right.container(border=True):
+    st.markdown("**Needs attention before complete testing**")
     if resolve:
         for item in resolve:st.write(f"• {item}")
-    else:st.write("Nothing identified. The reported rules, ownership and required information are ready for testing.")
+    else:st.write("No outstanding items identified from the current answers.")
 
 with st.container(border=True):
     playbook_left,playbook_right=st.columns([4,1])
