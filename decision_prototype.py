@@ -165,13 +165,10 @@ if owner!="Named":action_details.append("Hospital decision-maker")
 if rules!="Documented and confirmed":action_details.append("Operating rules and exceptions")
 action_details.extend([f'{r["Information needed"]} — {r["Source system"]}' for _,r in critical.iterrows()])
 m1,m2,m3=st.columns(3)
-with m1.container(border=True):
-    st.caption("Recommended first rollout")
-    st.subheader(f"Roll out to {department}")
-    st.markdown("**For:**")
-    if capabilities:
-        for capability in capabilities:st.write(f"• {capability}")
-    else:st.write("No tasks selected.")
+testing_ready=critical.empty and rules=="Documented and confirmed" and owner=="Named"
+m1.metric("Can complete workflow testing start?","Yes" if testing_ready else "Not yet")
+if testing_ready:m1.caption("The operating rules, decision owner and required information are reported ready.")
+else:m1.caption(f"Testing waits until {items_to_resolve} unresolved {'item is' if items_to_resolve==1 else 'items are'} addressed.")
 m2.metric("Required information reported ready",f'{len(ready_required)} of {len(required)}')
 if ready_details:m2.caption("Ready:  \n"+"  \n".join(f"• {item}" for item in ready_details))
 else:m2.caption("No required information has been confirmed as ready.")
