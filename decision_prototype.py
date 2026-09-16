@@ -156,19 +156,35 @@ items_to_resolve=len(critical)+int(rules!="Documented and confirmed")+int(owner!
 
 st.header("2. Recommended rollout plan")
 st.subheader("What this assessment found")
-st.markdown(f"**Recommended approach**  \n{route}")
-st.markdown(f"**Why**  \n{reason}")
 ready_required=required[required.Status=="Ready"]
 ready_details=[f'{r["Information needed"]} — {r["Source system"]}, {r["Transfer method"].lower()}' for _,r in ready_required.iterrows()]
+ready_systems=[item for item in ready_required["Source system"].dropna().unique().tolist() if item!="Not confirmed"]
+testing_ready=critical.empty and rules=="Documented and confirmed" and owner=="Named"
+if testing_ready:
+    system_text=", ".join(ready_systems[:-1])+(" and "+ready_systems[-1] if len(ready_systems)>1 else ready_systems[0] if ready_systems else "the confirmed source systems")
+    recommended_next_move=f"Set up and test the {department} workflow using information from {system_text}."
+    playbook_name="Existing systems: first-department setup and testing"
+elif not critical.empty:
+    first_issue=critical.iloc[0];info_name=first_issue["Information needed"].lower();source_name=first_issue["Source system"]
+    if first_issue["Status"]=="Must wait":recommended_next_move=f"Pause complete testing until {info_name} from {source_name} is available or another source is approved."
+    elif first_issue["Status"]=="Temporary route available":recommended_next_move=f"Prepare the {department} workflow, then approve and test a temporary transfer of {info_name} from {source_name}."
+    elif first_issue["Status"]=="Connection required":recommended_next_move=f"Prepare the {department} workflow while Hospital IT builds and tests the {source_name} connection for {info_name}."
+    else:recommended_next_move=f"Confirm how {info_name} will be supplied from {source_name} before scheduling complete testing."
+    playbook_name={"Must wait":"Unavailable source system","Temporary route available":"Temporary information transfer","Connection required":"New system connection","Needs confirmation":"Information source confirmation"}[first_issue["Status"]]
+elif rules!="Documented and confirmed":
+    recommended_next_move=f"Confirm the {department} operating rules and exceptions before setting up the workflow."
+    playbook_name="Operating-rule confirmation"
+else:
+    recommended_next_move="Name the hospital decision-maker before configuration begins."
+    playbook_name="Decision ownership"
+st.markdown(f"**Recommended next move**  \n{recommended_next_move}")
 action_details=[]
 if owner!="Named":action_details.append("Hospital decision-maker")
 if rules!="Documented and confirmed":action_details.append("Operating rules and exceptions")
 action_details.extend([f'{r["Information needed"]} — {r["Source system"]}' for _,r in critical.iterrows()])
 m1,m2,m3=st.columns(3)
-testing_ready=critical.empty and rules=="Documented and confirmed" and owner=="Named"
 m1.metric("Can complete workflow testing start?","Yes" if testing_ready else "Not yet")
-if testing_ready:m1.caption("The operating rules, decision owner and required information are reported ready.")
-else:m1.caption(f"Testing waits until {items_to_resolve} unresolved {'item is' if items_to_resolve==1 else 'items are'} addressed.")
+if not testing_ready:m1.caption(f"Testing waits until {items_to_resolve} unresolved {'item is' if items_to_resolve==1 else 'items are'} addressed.")
 m2.metric("Required information reported ready",f'{len(ready_required)} of {len(required)}')
 if ready_details:m2.caption("Ready:  \n"+"  \n".join(f"• {item}" for item in ready_details))
 else:m2.caption("No required information has been confirmed as ready.")
@@ -195,6 +211,14 @@ with right:
     if resolve:
         for item in resolve:st.write(f"• {item}")
     else:st.write("Nothing identified. The reported rules, ownership and required information are ready for testing.")
+
+with st.container(border=True):
+    playbook_left,playbook_right=st.columns([4,1])
+    playbook_left.markdown("**Internal deployment playbook**")
+    playbook_left.write(playbook_name)
+    playbook_left.caption("When connected, this will open the relevant internal setup steps, owners, verification evidence, exception handling and escalation process.")
+    playbook_right.write("")
+    playbook_right.button("Open playbook",disabled=True,use_container_width=True,help="Placeholder for an internal knowledge-base or workflow link.")
 
 plan=[[False,1,"Observe the current workflow, exceptions and baseline for the selected scope.","Every rollout needs an observed starting point before configuration.","Deployment team","Hospital operations and intended users","Days 1–3"]]
 if owner!="Named":plan.append([False,len(plan)+1,"Name the hospital decision-maker for the first rollout.","The assessment does not have a confirmed decision owner.","Hospital sponsor","Deployment team and department leadership","Days 1–3"])
@@ -317,7 +341,7 @@ elif owner!="Named":decision_needed="Name the hospital decision-maker for the fi
 elif rules!="Documented and confirmed":decision_needed="Confirm the first department's operating rules before setup."
 else:decision_needed="Proceed with first-department setup and complete workflow testing."
 critical_package=timing.loc[timing["Recommended maximum weeks"].astype(float).idxmax(),"Work package"]
-st.markdown(f"**Recommended first move**  \n{route}")
+st.markdown(f"**Recommended first move**  \n{recommended_next_move}")
 st.markdown(f"**Why this route**  \n{reason}")
 st.markdown(f"**Current readiness**  \n{readiness}")
 st.markdown(f"**Estimated timeline**  \n{total[0]:g}–{total[1]:g} weeks to first-department launch. The longest planned work package is {critical_package.lower()}.")
