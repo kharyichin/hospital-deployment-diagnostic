@@ -159,20 +159,22 @@ st.subheader("What this assessment found")
 ready_required=required[required.Status=="Ready"]
 ready_details=[f'{r["Information needed"]} — {r["Source system"]}, {r["Transfer method"].lower()}' for _,r in ready_required.iterrows()]
 ready_systems=[item for item in ready_required["Source system"].dropna().unique().tolist() if item!="Not confirmed"]
+selected_tasks=[item.lower() for item in capabilities]
+task_text=", ".join(selected_tasks[:-1])+(" and "+selected_tasks[-1] if len(selected_tasks)>1 else selected_tasks[0] if selected_tasks else "the selected tasks")
 testing_ready=critical.empty and rules=="Documented and confirmed" and owner=="Named"
 if testing_ready:
     system_text=", ".join(ready_systems[:-1])+(" and "+ready_systems[-1] if len(ready_systems)>1 else ready_systems[0] if ready_systems else "the confirmed source systems")
-    recommended_next_move=f"Set up and test the {department} workflow using information from {system_text}."
+    recommended_next_move=f"Set up and test these {department} tasks using information from {system_text}: {task_text}."
     playbook_name="Existing systems: first-department setup and testing"
 elif not critical.empty:
     first_issue=critical.iloc[0];info_name=first_issue["Information needed"].lower();source_name=first_issue["Source system"]
     if first_issue["Status"]=="Must wait":recommended_next_move=f"Pause complete testing until {info_name} from {source_name} is available or another source is approved."
-    elif first_issue["Status"]=="Temporary route available":recommended_next_move=f"Prepare the {department} workflow, then approve and test a temporary transfer of {info_name} from {source_name}."
-    elif first_issue["Status"]=="Connection required":recommended_next_move=f"Prepare the {department} workflow while Hospital IT builds and tests the {source_name} connection for {info_name}."
+    elif first_issue["Status"]=="Temporary route available":recommended_next_move=f"Prepare the selected {department} tasks, then approve and test a temporary transfer of {info_name} from {source_name}."
+    elif first_issue["Status"]=="Connection required":recommended_next_move=f"Prepare the selected {department} tasks while Hospital IT builds and tests the {source_name} connection for {info_name}."
     else:recommended_next_move=f"Confirm how {info_name} will be supplied from {source_name} before scheduling complete testing."
     playbook_name={"Must wait":"Unavailable source system","Temporary route available":"Temporary information transfer","Connection required":"New system connection","Needs confirmation":"Information source confirmation"}[first_issue["Status"]]
 elif rules!="Documented and confirmed":
-    recommended_next_move=f"Confirm the {department} operating rules and exceptions before setting up the workflow."
+    recommended_next_move=f"Confirm the operating rules and exceptions for {task_text} in {department} before setup begins."
     playbook_name="Operating-rule confirmation"
 else:
     recommended_next_move="Name the hospital decision-maker before configuration begins."
@@ -181,7 +183,7 @@ with st.container(border=True):
     st.markdown("**Recommended next move**")
     st.subheader(recommended_next_move)
 m1,m2,m3=st.columns(3)
-m1.metric("Can complete workflow testing start?","Yes" if testing_ready else "Not yet")
+m1.metric("Can end-to-end testing start?","Yes" if testing_ready else "Not yet")
 m2.metric("Required information reported ready",f'{len(ready_required)} of {len(required)}')
 m3.metric("Items to resolve before complete testing",items_to_resolve)
 
