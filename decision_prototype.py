@@ -3,6 +3,7 @@ import re
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Hospital Deployment Planning Diagnostic",layout="wide")
 st.markdown("<style>.block-container{max-width:1280px;padding-top:2rem}h1,h2,h3{letter-spacing:-.025em}[data-testid='stMetric']{background:#f4f8f7;border:1px solid #d6e3df;padding:14px;border-radius:8px}</style>",unsafe_allow_html=True)
@@ -38,46 +39,111 @@ def recommend(df,rules,owner):
     if owner!="Named":return "Name the hospital decision owner before configuration","The required information is available, but no one has been named to approve decisions and exceptions."
     return "Use the existing systems for a controlled first-department launch","The reported operating rules, decision owner and required information are ready for setup and testing."
 
+TOUR_STEPS=[
+    ("Choose a starting point","Open an example to see how conditions change the plan, or choose Current assessment for a real case.","choose-an-assessment"),
+    ("Complete the assessment","Record the scope, current process, operating rules and information needed for the first rollout.","1-hospital-and-rollout-assessment"),
+    ("Review the rollout plan","See what can start now, what needs resolution and who needs to act.","2-recommended-rollout-plan"),
+    ("Save the work","Download the action plan, timeline or full assessment for the team.","6-download-working-files"),
+]
+
+if "tour_step" not in st.session_state:st.session_state.tour_step=0
+if "tour_open" not in st.session_state:st.session_state.tour_open=True
+if "tour_finished" not in st.session_state:st.session_state.tour_finished=False
+
+@st.dialog("Quick tour")
+def show_tour():
+    step=st.session_state.tour_step
+    title,body,anchor=TOUR_STEPS[step]
+    st.caption(f"Step {step+1} of {len(TOUR_STEPS)}")
+    st.progress((step+1)/len(TOUR_STEPS))
+    st.subheader(title)
+    st.write(body)
+    left,middle,right=st.columns([1,1,1.4])
+    if step>0 and left.button("Back",use_container_width=True):
+        st.session_state.tour_step-=1;st.rerun()
+    if middle.button("End tour",use_container_width=True):
+        st.session_state.tour_open=False;st.session_state.tour_finished=True;st.rerun()
+    label="Show this section" if step<len(TOUR_STEPS)-1 else "Show downloads"
+    if right.button(label,type="primary",use_container_width=True):
+        st.session_state.tour_scroll_target=anchor
+        st.session_state.tour_open=False
+        if step<len(TOUR_STEPS)-1:st.session_state.tour_step+=1
+        else:st.session_state.tour_finished=True
+        st.rerun()
+
 title_col,tour_col=st.columns([5,1])
 title_col.title("Hospital Deployment Planning Diagnostic")
 tour_col.write("")
-with tour_col.popover("Quick tour",use_container_width=True):
-    st.markdown("**Follow the assessment from start to finish**")
-    st.markdown("[**1. Choose a starting point**](#choose-an-assessment)  \nOpen an example or enter a real hospital case.")
-    st.markdown("[**2. Complete the assessment**](#1-hospital-and-rollout-assessment)  \nRecord the scope, current process, rules and required information.")
-    st.markdown("[**3. Review the rollout plan**](#2-recommended-rollout-plan)  \nSee what can start, what needs resolution and who needs to act.")
-    st.markdown("[**4. Save the work**](#6-download-working-files)  \nDownload the action plan, timeline or full assessment.")
+tour_label="Quick tour" if st.session_state.tour_finished or st.session_state.tour_step==0 else f"Continue tour · {st.session_state.tour_step+1}/4"
+if tour_col.button(tour_label,use_container_width=True):
+    if st.session_state.tour_finished:st.session_state.tour_step=0;st.session_state.tour_finished=False
+    st.session_state.tour_open=True;st.rerun()
 st.write("Assess the proposed rollout, identify what controls the first launch, and build a practical hospital-specific plan.")
 
+target=st.session_state.pop("tour_scroll_target",None)
+if target is not None:
+    components.html(f"<script>setTimeout(()=>window.parent.document.getElementById('{target}')?.scrollIntoView({{behavior:'smooth',block:'start'}}),500);</script>",height=0)
+if st.session_state.tour_open:show_tour()
+
 st.markdown('<span id="choose-an-assessment"></span>',unsafe_allow_html=True)
-choice=st.selectbox("Choose an assessment",list(EXAMPLES),index=1,help="Choose Current assessment for a new hospital. The examples demonstrate how different conditions change the recommendation.")
+uploaded=st.file_uploader("Resume a saved assessment",type="json",help="Upload a full assessment previously downloaded from this page.")
+loaded={};form_key="new"
+if uploaded is not None:
+    try:
+        loaded=json.load(uploaded);form_key=f"{uploaded.name}:{uploaded.size}"
+        st.success("Saved assessment loaded. Review the answers before continuing.")
+    except (json.JSONDecodeError,UnicodeDecodeError,AttributeError):
+        st.error("This file could not be read. Upload a JSON file downloaded from this assessment.")
+loaded_choice=loaded.get("selection") if loaded.get("selection") in EXAMPLES else None
+choice=st.selectbox("Choose an assessment",list(EXAMPLES),index=list(EXAMPLES).index(loaded_choice) if loaded_choice else 1,key=f"choice:{form_key}",help="Choose Current assessment for a new hospital. The examples demonstrate how different conditions change the recommendation.")
 st.caption("Examples use a fictional ICU rollout. Change any answer to see how the plan changes.")
 if st.button("Reset this selection"):
     for key in list(st.session_state):
         if choice in str(key): del st.session_state[key]
     st.rerun()
 profile0,governance0,rules0,owner0=EXAMPLES[choice]
+loaded_scope=loaded.get("scope",{})
+loaded_context=loaded.get("hospital_context",{})
 
 st.header("1. Hospital and rollout assessment")
 st.info("Answers reflect the information available today. Record how each system answer was checked, then verify the workflow with the responsible hospital teams during discovery.")
 a,b,c,d=st.tabs(["1. Scope of work","2. Current process","3. Rules and ownership","4. Systems and information"])
 with a:
     x,y=st.columns(2)
-    solution=x.selectbox("Deployment scope",list(SOLUTIONS),help="Choose the hospital workflow this assessment will plan. Keep the first rollout narrow enough to test completely."); capabilities=x.multiselect("Capabilities included in the first rollout",SOLUTIONS[solution],default=SOLUTIONS[solution][:2],help="Select only the capabilities intended for the first ward, department or hospital.")
-    department=y.text_input("First ward or department",value="ICU"); staff=y.multiselect("Staff groups included",["Nurses","Nurse managers","Central staffing team","Allied health","Physicians or advanced practice providers","Hospital executives","Other"],default=["Nurses","Nurse managers","Central staffing team"]); sites=y.number_input("Hospitals included in the first rollout",1,value=1)
+    solution_options=list(SOLUTIONS);solution_default=loaded_scope.get("solution") if loaded_scope.get("solution") in solution_options else solution_options[0]
+    solution=x.selectbox("Deployment scope",solution_options,index=solution_options.index(solution_default),key=f"solution:{form_key}",help="Choose the hospital workflow this assessment will plan. Keep the first rollout narrow enough to test completely.")
+    loaded_capabilities=[item for item in loaded_scope.get("capabilities",[]) if item in SOLUTIONS[solution]]
+    capabilities=x.multiselect("Capabilities included in the first rollout",SOLUTIONS[solution],default=loaded_capabilities or SOLUTIONS[solution][:2],key=f"capabilities:{form_key}",help="Select only the capabilities intended for the first ward, department or hospital.")
+    department=y.text_input("First ward or department",value=loaded_scope.get("department","ICU"),key=f"department:{form_key}")
+    staff_options=["Nurses","Nurse managers","Central staffing team","Allied health","Physicians or advanced practice providers","Hospital executives","Other"]
+    staff=y.multiselect("Staff groups included",staff_options,default=[item for item in loaded_scope.get("staff_groups",["Nurses","Nurse managers","Central staffing team"]) if item in staff_options],key=f"staff:{form_key}")
+    sites=y.number_input("Hospitals included in the first rollout",1,value=int(loaded_scope.get("hospitals",1)),key=f"sites:{form_key}")
 with b:
     x,y=st.columns(2)
     profiles=["Not selected","Academic medical center","Multi-hospital regional system","Community or rural hospital"]
-    profile=x.selectbox("Hospital type",profiles,index=profiles.index(profile0)); governance=x.selectbox("Who currently manages this work?",["Central staffing team","Department-level managers","Shared between central and department teams","Not confirmed"],index=["Central staffing team","Department-level managers","Shared between central and department teams","Not confirmed"].index(governance0))
-    manual=y.multiselect("How is this work completed today?",["Workforce software","Spreadsheets","Calls or texts","Paper forms","Manual entry between systems","None identified","Not confirmed"],default=["None identified"] if choice==list(EXAMPLES)[1] else ["Spreadsheets"]); variation=y.selectbox("Does the process differ between departments?",["Same process in first-wave departments","Some local differences","Process differs by department","Not confirmed"]); exceptions=y.multiselect("Which situations regularly require manual decisions?",["Sick calls","Vacant shifts","Shift swaps","Overtime approval","Float staff","Staff reassignment","Downtime or connection failure","Not confirmed"],default=["Vacant shifts"])
+    profile_default=loaded_context.get("type",profile0);profile=x.selectbox("Hospital type",profiles,index=profiles.index(profile_default) if profile_default in profiles else 0,key=f"profile:{form_key}")
+    governance_options=["Central staffing team","Department-level managers","Shared between central and department teams","Not confirmed"];governance_default=loaded_context.get("current_owner",governance0)
+    governance=x.selectbox("Who currently manages this work?",governance_options,index=governance_options.index(governance_default) if governance_default in governance_options else 3,key=f"governance:{form_key}")
+    manual_options=["Workforce software","Spreadsheets","Calls or texts","Paper forms","Manual entry between systems","None identified","Not confirmed"]
+    manual=y.multiselect("How is this work completed today?",manual_options,default=[item for item in loaded_context.get("manual_work",["None identified"] if choice==list(EXAMPLES)[1] else ["Spreadsheets"]) if item in manual_options],key=f"manual:{form_key}")
+    variation_options=["Same process in first-wave departments","Some local differences","Process differs by department","Not confirmed"];variation_default=loaded_context.get("process_variation",variation_options[0])
+    variation=y.selectbox("Does the process differ between departments?",variation_options,index=variation_options.index(variation_default) if variation_default in variation_options else 3,key=f"variation:{form_key}")
+    exception_options=["Sick calls","Vacant shifts","Shift swaps","Overtime approval","Float staff","Staff reassignment","Downtime or connection failure","Not confirmed"]
+    exceptions=y.multiselect("Which situations regularly require manual decisions?",exception_options,default=[item for item in loaded_context.get("exceptions",["Vacant shifts"]) if item in exception_options],key=f"exceptions:{form_key}")
 with c:
     x,y=st.columns(2); rule_options=["Documented and confirmed","Written, but some rules need confirmation","Used in practice but not fully documented","Not documented","Not confirmed"]
-    rules=x.selectbox("How are the current operating rules recorded?",rule_options,index=rule_options.index(rules0)); labor=x.selectbox("Do union or employment-contract rules apply?",["Union or contract rules apply","No union or contract rules identified","Not confirmed"])
-    owner=y.selectbox("Is a hospital decision-maker named for this scope?",["Named","Not named","Not confirmed"],index=["Named","Not named","Not confirmed"].index(owner0)); approvers=y.multiselect("Who must approve changes to this workflow?",["Nursing operations","Department managers","Central staffing office","Hospital IT","HR or payroll","Labor Relations","Information security or privacy","Not confirmed"],default=["Nursing operations","Hospital IT"])
+    rules_default=loaded_context.get("rules",rules0);rules=x.selectbox("How are the current operating rules recorded?",rule_options,index=rule_options.index(rules_default) if rules_default in rule_options else 4,key=f"rules:{form_key}")
+    labor_options=["Union or contract rules apply","No union or contract rules identified","Not confirmed"];labor_default=loaded_context.get("labor_rules",labor_options[0])
+    labor=x.selectbox("Do union or employment-contract rules apply?",labor_options,index=labor_options.index(labor_default) if labor_default in labor_options else 2,key=f"labor:{form_key}")
+    owner_options=["Named","Not named","Not confirmed"];owner_default=loaded_context.get("decision_owner",owner0)
+    owner=y.selectbox("Is a hospital decision-maker named for this scope?",owner_options,index=owner_options.index(owner_default) if owner_default in owner_options else 2,key=f"owner:{form_key}")
+    approver_options=["Nursing operations","Department managers","Central staffing office","Hospital IT","HR or payroll","Labor Relations","Information security or privacy","Not confirmed"]
+    approvers=y.multiselect("Who must approve changes to this workflow?",approver_options,default=[item for item in loaded_context.get("approvers",["Nursing operations","Hospital IT"]) if item in approver_options],key=f"approvers:{form_key}")
 with d:
-    default=ROWS.get(choice,[["Employee IDs and department assignments","Not confirmed","Not confirmed","Not confirmed","Yes","Not confirmed","Not confirmed"],["Qualifications and shift eligibility","Not confirmed","Not confirmed","Not confirmed","Yes","Not confirmed","Not confirmed"],["Patient demand and required coverage","Not confirmed","Not confirmed","Not confirmed","Yes","Not confirmed","Not confirmed"]])
-    raw=pd.DataFrame(default,columns=["Information needed","Source system","Source status","Transfer method","Required before first launch","Temporary route","How this was checked"])
-    flows=st.data_editor(raw,hide_index=True,width="stretch",num_rows="dynamic",key=f"flows:{choice}",column_config={"Information needed":st.column_config.SelectboxColumn(options=INFO),"Source system":st.column_config.SelectboxColumn(options=SYSTEMS),"Source status":st.column_config.SelectboxColumn(options=["Available and stable","Being replaced","New system being introduced","Not available","Not confirmed"]),"Transfer method":st.column_config.SelectboxColumn(options=["Direct connection","Existing scheduled file","File upload","Manual entry","Same system","New connection required","Not confirmed"]),"Required before first launch":st.column_config.SelectboxColumn(options=["Yes","No"]),"Temporary route":st.column_config.SelectboxColumn(options=["Not needed","Allowed for first department","Not allowed","Not confirmed"]),"How this was checked":st.column_config.SelectboxColumn(options=["Reported by stakeholder","Document reviewed","Observed in practice","Tested successfully","Not confirmed"])})
+    columns=["Information needed","Source system","Source status","Transfer method","Required before first launch","Temporary route","How this was checked"]
+    default=loaded.get("information_dependencies") or ROWS.get(choice,[["Employee IDs and department assignments","Not confirmed","Not confirmed","Not confirmed","Yes","Not confirmed","Not confirmed"],["Qualifications and shift eligibility","Not confirmed","Not confirmed","Not confirmed","Yes","Not confirmed","Not confirmed"],["Patient demand and required coverage","Not confirmed","Not confirmed","Not confirmed","Yes","Not confirmed","Not confirmed"]])
+    raw=pd.DataFrame(default);raw=raw[columns] if set(columns).issubset(raw.columns) else pd.DataFrame(default,columns=columns)
+    flows=st.data_editor(raw,hide_index=True,width="stretch",num_rows="dynamic",key=f"flows:{choice}:{form_key}",column_config={"Information needed":st.column_config.SelectboxColumn(options=INFO),"Source system":st.column_config.SelectboxColumn(options=SYSTEMS),"Source status":st.column_config.SelectboxColumn(options=["Available and stable","Being replaced","New system being introduced","Not available","Not confirmed"]),"Transfer method":st.column_config.SelectboxColumn(options=["Direct connection","Existing scheduled file","File upload","Manual entry","Same system","New connection required","Not confirmed"]),"Required before first launch":st.column_config.SelectboxColumn(options=["Yes","No"]),"Temporary route":st.column_config.SelectboxColumn(options=["Not needed","Allowed for first department","Not allowed","Not confirmed"]),"How this was checked":st.column_config.SelectboxColumn(options=["Reported by stakeholder","Document reviewed","Observed in practice","Tested successfully","Not confirmed"])})
 
 df=flows.copy();df["Status"]=df.apply(status,axis=1); required=df[df["Required before first launch"]=="Yes"]
 route,reason=recommend(df,rules,owner); critical=required[required.Status.isin(["Must wait","Temporary route available","Connection required","Needs confirmation"])]
@@ -136,7 +202,11 @@ plan.append([False,len(plan)+1,"Test normal work, exceptions and recovery throug
 st.subheader("Execution tracker")
 st.write("These actions are generated from the assessment above. Update the timing and mark each item complete as the work progresses.")
 plan_df=pd.DataFrame(plan,columns=["Done","Item","Action","Why this action appears","Owner","Supporting parties","Timing / status"])
-plan_df=st.data_editor(plan_df,hide_index=True,width="stretch",disabled=["Item","Action","Why this action appears","Owner","Supporting parties"],key=f"plan:{choice}",column_config={"Done":st.column_config.CheckboxColumn(width="small"),"Item":st.column_config.NumberColumn(width="small"),"Action":st.column_config.TextColumn(width="large"),"Why this action appears":st.column_config.TextColumn(width="large"),"Timing / status":st.column_config.TextColumn(help="Examples: Days 1–3; Do after item 2; Ongoing; Completed")})
+saved_plan=loaded.get("action_plan")
+if saved_plan:
+    saved_plan_df=pd.DataFrame(saved_plan)
+    if set(plan_df.columns).issubset(saved_plan_df.columns):plan_df=saved_plan_df[plan_df.columns]
+plan_df=st.data_editor(plan_df,hide_index=True,width="stretch",disabled=["Item","Action","Why this action appears","Owner","Supporting parties"],key=f"plan:{choice}:{form_key}",column_config={"Done":st.column_config.CheckboxColumn(width="small"),"Item":st.column_config.NumberColumn(width="small"),"Action":st.column_config.TextColumn(width="large"),"Why this action appears":st.column_config.TextColumn(width="large"),"Timing / status":st.column_config.TextColumn(help="Examples: Days 1–3; Do after item 2; Ongoing; Completed")})
 completed=int(plan_df["Done"].sum())
 st.progress(completed/len(plan_df));st.caption(f"{completed} of {len(plan_df)} actions completed")
 def color_status(value):
@@ -159,7 +229,11 @@ st.header("3. Estimated timeline")
 st.write("Recommended planning time. Edit the ranges when hospital or vendor estimates are available.")
 complexity=int(sites>1)+int(variation!="Same process in first-wave departments")+int(labor=="Union or contract rules apply")+int(profile=="Academic medical center"); connections=int(required.Status.isin(["Connection required","Temporary route available","Must wait","Needs confirmation"]).sum())
 timing=pd.DataFrame([["Workflow discovery",1,2+min(complexity,2),"Access to department operators"],["Rule confirmation",1,1+(2 if rules!="Documented and confirmed" else 0)+(1 if labor=="Union or contract rules apply" else 0),"Observed workflow"],["Information and connection preparation",1,2+connections*2,"Confirmed sources, access and owners"],["Configuration and complete workflow testing",2,3,"Confirmed rules and usable information paths"],["User preparation and controlled launch",1,2,"Completed workflow testing"]],columns=["Work package","Recommended minimum weeks","Recommended maximum weeks","Must be completed first"])
-timing=st.data_editor(timing,hide_index=True,width="stretch",disabled=["Work package","Must be completed first"],key=f"time:{choice}")
+saved_timing=loaded.get("timeline")
+if saved_timing:
+    saved_timing_df=pd.DataFrame(saved_timing)
+    if set(timing.columns).issubset(saved_timing_df.columns):timing=saved_timing_df[timing.columns]
+timing=st.data_editor(timing,hide_index=True,width="stretch",disabled=["Work package","Must be completed first"],key=f"time:{choice}:{form_key}")
 vals=[(float(r.iloc[1]),float(r.iloc[2])) for _,r in timing.iterrows()]; starts=[(0,0),vals[0],vals[0],(vals[0][0]+max(vals[1][0],vals[2][0]),vals[0][1]+max(vals[1][1],vals[2][1])),(0,0)];starts[4]=(starts[3][0]+vals[3][0],starts[3][1]+vals[3][1]);total=(starts[4][0]+vals[4][0],starts[4][1]+vals[4][1])
 st.metric("Estimated time to first-department launch",f"{total[0]:g}–{total[1]:g} weeks")
 fig=go.Figure(); colors=["#177e89","#4d8f7f","#d08a33","#635b8f","#2b6e7d"]
@@ -169,12 +243,25 @@ st.caption("Rule confirmation and information preparation occupy the same weeks.
 
 st.header("4. Potential issues and flags")
 watch=[]
-if variation!="Same process in first-wave departments":watch.append(["Department variation","Managers describe different rules or exceptions for the same work.","Compare first-wave departments before copying a configuration.","Before configuration"])
-if labor=="Union or contract rules apply":watch.append(["Union and employment agreement requirements","The observed shift-bidding order, minimum rest period, overtime rule or approval process differs from the applicable agreement.","Review the specific requirement with Labor Relations and update the workflow before configuration.","While confirming operating rules"])
-if governance=="Department-level managers":watch.append(["Uneven local adoption","Departments continue using calls, texts or spreadsheets after testing.","Include department managers in observation, testing and issue review.","During testing and first launch"])
-if not watch:watch=[["Local workflow mismatch","The selected department behaves differently from the reported process.","Update the workflow and rules before complete testing.","During observation and testing"]]
-watch_df=pd.DataFrame(watch,columns=["Potential issue","Warning sign","Recommended response","Review point"])
-watch_df=st.data_editor(watch_df,hide_index=True,width="stretch",num_rows="dynamic",key=f"flags:{choice}",column_config={"Potential issue":st.column_config.TextColumn(width="medium"),"Warning sign":st.column_config.TextColumn(width="large"),"Recommended response":st.column_config.TextColumn(width="large"),"Review point":st.column_config.TextColumn(width="medium")})
+if variation!="Same process in first-wave departments":watch.append(["Department variation","Managers describe different rules or exceptions for the same work.","Compare first-wave departments before copying a configuration.","Before configuration","Likely","Major"])
+if labor=="Union or contract rules apply":watch.append(["Union and employment agreement requirements","The observed shift-bidding order, minimum rest period, overtime rule or approval process differs from the applicable agreement.","Review the specific requirement with Labor Relations and update the workflow before configuration.","While confirming operating rules","Possible","Major"])
+if governance=="Department-level managers":watch.append(["Uneven local adoption","Departments continue using calls, texts or spreadsheets after testing.","Include department managers in observation, testing and issue review.","During testing and first launch","Possible","Moderate"])
+if not watch:watch=[["Local workflow mismatch","The selected department behaves differently from the reported process.","Update the workflow and rules before complete testing.","During observation and testing","Possible","Moderate"]]
+watch_columns=["Potential issue","Warning sign","Recommended response","Review point","Likelihood","Impact"]
+saved_watch=loaded.get("potential_issues")
+if saved_watch:
+    normalized=[]
+    for item in saved_watch:
+        normalized.append([item.get("potential_issue",""),item.get("warning_sign",""),item.get("recommended_response",""),item.get("review_point",""),item.get("likelihood","Possible"),item.get("impact","Moderate")])
+    watch=normalized
+watch_df=pd.DataFrame(watch,columns=watch_columns)
+watch_df=st.data_editor(watch_df,hide_index=True,width="stretch",num_rows="dynamic",key=f"flags:{choice}:{form_key}",column_config={"Potential issue":st.column_config.TextColumn(width="medium"),"Warning sign":st.column_config.TextColumn(width="large"),"Recommended response":st.column_config.TextColumn(width="large"),"Review point":st.column_config.TextColumn(width="medium"),"Likelihood":st.column_config.SelectboxColumn(options=["Unlikely","Possible","Likely"]),"Impact":st.column_config.SelectboxColumn(options=["Minor","Moderate","Major"])})
+likelihood_score={"Unlikely":1,"Possible":2,"Likely":3};impact_score={"Minor":1,"Moderate":2,"Major":3}
+watch_df["Score"]=watch_df["Likelihood"].map(likelihood_score).fillna(2)*watch_df["Impact"].map(impact_score).fillna(2)
+watch_df["Priority"]=watch_df["Score"].apply(lambda value:"High" if value>=6 else "Medium" if value>=3 else "Low")
+priority_view=watch_df.sort_values(["Score","Potential issue"],ascending=[False,True])[["Priority","Potential issue","Likelihood","Impact","Recommended response"]]
+st.markdown("**Priority order**")
+st.dataframe(priority_view,hide_index=True,width="stretch")
 watch=watch_df.values.tolist()
 st.header("5. Deployment decision brief")
 states=required.Status.tolist()
@@ -199,7 +286,7 @@ st.markdown("**Before expanding**  \nConfirm that the department is using the wo
 
 st.header("6. Download working files")
 safe_department=re.sub(r"[^a-z0-9]+","_",department.lower()).strip("_") or "department"
-assessment={"selection":choice,"scope":{"solution":solution,"capabilities":capabilities,"department":department,"staff_groups":staff,"hospitals":sites},"hospital_context":{"type":profile,"current_owner":governance,"process_variation":variation,"manual_work":manual,"exceptions":exceptions,"rules":rules,"labor_rules":labor,"decision_owner":owner,"approvers":approvers},"recommended_rollout":{"route":route,"reason":reason,"main_dependency":critical_text,"estimated_timeline_weeks":{"minimum":total[0],"maximum":total[1]}},"information_dependencies":df.to_dict("records"),"action_plan":plan_df.to_dict("records"),"timeline":timing.to_dict("records"),"potential_issues":[dict(zip(["potential_issue","warning_sign","recommended_response","review_point"],row)) for row in watch]}
+assessment={"selection":choice,"scope":{"solution":solution,"capabilities":capabilities,"department":department,"staff_groups":staff,"hospitals":sites},"hospital_context":{"type":profile,"current_owner":governance,"process_variation":variation,"manual_work":manual,"exceptions":exceptions,"rules":rules,"labor_rules":labor,"decision_owner":owner,"approvers":approvers},"recommended_rollout":{"route":route,"reason":reason,"main_dependency":critical_text,"estimated_timeline_weeks":{"minimum":total[0],"maximum":total[1]}},"information_dependencies":df.to_dict("records"),"action_plan":plan_df.to_dict("records"),"timeline":timing.to_dict("records"),"potential_issues":[{"potential_issue":r["Potential issue"],"warning_sign":r["Warning sign"],"recommended_response":r["Recommended response"],"review_point":r["Review point"],"likelihood":r["Likelihood"],"impact":r["Impact"],"priority":r["Priority"]} for _,r in watch_df.iterrows()]}
 e1,e2,e3,e4=st.columns(4)
 e1.download_button("Download action plan",plan_df.to_csv(index=False),f"hospital_deployment_action_plan_{safe_department}.csv","text/csv")
 e2.download_button("Download dependencies",df.to_csv(index=False),f"hospital_deployment_dependencies_{safe_department}.csv","text/csv")
