@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-st.set_page_config(page_title="Vitalize Deployment Planning Diagnostic",layout="wide")
+st.set_page_config(page_title="Hospital Deployment Planning Diagnostic",layout="wide")
 st.markdown("<style>.block-container{max-width:1280px;padding-top:2rem}h1,h2,h3{letter-spacing:-.025em}[data-testid='stMetric']{background:#f4f8f7;border:1px solid #d6e3df;padding:14px;border-radius:8px}</style>",unsafe_allow_html=True)
 
 EXAMPLES={
@@ -38,7 +38,7 @@ def recommend(df,rules,owner):
     if owner!="Named":return "Name the hospital decision owner before configuration","Information paths are ready, but decisions have no accountable owner."
     return "Reuse the existing setup for a controlled first-department launch","Required information paths, rules and ownership are reported as ready."
 
-st.title("Vitalize Deployment Planning Diagnostic")
+st.title("Hospital Deployment Planning Diagnostic")
 st.write("Assess the proposed rollout, identify what controls the first launch, and build a practical hospital-specific plan.")
 choice=st.selectbox("Current selection",list(EXAMPLES),index=1)
 st.caption("Examples use a fictional ICU rollout. Change any answer to see how the plan changes.")
@@ -53,7 +53,7 @@ st.info("Answers reflect the information available today. Record how each system
 a,b,c,d=st.tabs(["Scope of work","Current process","Rules and ownership","Systems and information"])
 with a:
     x,y=st.columns(2)
-    solution=x.selectbox("Vitalize solution in scope",list(SOLUTIONS)); capabilities=x.multiselect("Capabilities included in the first rollout",SOLUTIONS[solution],default=SOLUTIONS[solution][:2])
+    solution=x.selectbox("Deployment scope",list(SOLUTIONS)); capabilities=x.multiselect("Capabilities included in the first rollout",SOLUTIONS[solution],default=SOLUTIONS[solution][:2])
     department=y.text_input("First ward or department",value="ICU"); staff=y.multiselect("Staff groups included",["Nurses","Nurse managers","Central staffing team","Allied health","Physicians or advanced practice providers","Hospital executives","Other"],default=["Nurses","Nurse managers","Central staffing team"]); sites=y.number_input("Hospitals included in the first rollout",1,value=1)
 with b:
     x,y=st.columns(2)
@@ -83,7 +83,7 @@ st.subheader("Deployment summary")
 system_names=[x for x in required["Source system"].dropna().unique().tolist() if x!="Not confirmed"]
 systems_text=", ".join(system_names) if system_names else "the required source systems"
 rule_setup={"Workforce management":f"Enter the {department} scheduling and approval rules.","Flow and capacity operations":f"Enter the {department} flow, capacity and escalation rules.","Executive analytics":f"Enter the {department} alert, reporting and escalation rules."}[solution]
-st.write(f"Before testing, the team needs to make the selected {department} workflow work inside Vitalize:")
+st.write(f"Before testing, the team needs to set up the selected {department} workflow in the new platform:")
 st.markdown(f"1. Add the {department} staff who will use it.\n2. {rule_setup}\n3. Connect the required {systems_text} information.\n4. Give test users access.\n5. Prepare normal and exception scenarios to test.")
 plan=[[1,"Observe the current workflow, exceptions and baseline for the selected scope.","Deployment team","Hospital operations and intended users","Start now"]]
 if rules!="Documented and confirmed":plan.append([2,"Confirm the first department's operating rules and exceptions.","Deployment team","Department managers and Nursing operations"+("; Labor Relations" if labor=="Union or contract rules apply" else ""),"Do together with item 1"])
@@ -108,7 +108,7 @@ with st.expander("View all required information paths"):
     st.dataframe(df[["Information needed","Source system","Source status","Transfer method","How this was checked","Status"]],hide_index=True,width="stretch")
 
 st.header("3. Estimated timeline")
-st.write("Recommended planning time. Edit the ranges when hospital or Vitalize estimates are available.")
+st.write("Recommended planning time. Edit the ranges when hospital or vendor estimates are available.")
 complexity=int(sites>1)+int(variation!="Same process in first-wave departments")+int(labor=="Union or contract rules apply")+int(profile=="Academic medical center"); connections=int(required.Status.isin(["Connection required","Temporary route available","Must wait","Needs confirmation"]).sum())
 timing=pd.DataFrame([["Workflow discovery",1,2+min(complexity,2),"Access to department operators"],["Rule confirmation",1,1+(2 if rules!="Documented and confirmed" else 0)+(1 if labor=="Union or contract rules apply" else 0),"Observed workflow"],["Information and connection preparation",1,2+connections*2,"Confirmed sources, access and owners"],["Configuration and complete workflow testing",2,3,"Confirmed rules and usable information paths"],["User preparation and controlled launch",1,2,"Completed workflow testing"]],columns=["Work package","Recommended minimum weeks","Recommended maximum weeks","Must be completed first"])
 timing=st.data_editor(timing,hide_index=True,width="stretch",disabled=["Work package","Must be completed first"],key=f"time:{choice}")
@@ -163,9 +163,9 @@ st.header("6. Download working files")
 safe_department=re.sub(r"[^a-z0-9]+","_",department.lower()).strip("_") or "department"
 assessment={"selection":choice,"scope":{"solution":solution,"capabilities":capabilities,"department":department,"staff_groups":staff,"hospitals":sites},"hospital_context":{"type":profile,"current_owner":governance,"process_variation":variation,"manual_work":manual,"exceptions":exceptions,"rules":rules,"labor_rules":labor,"decision_owner":owner,"approvers":approvers},"recommended_rollout":{"route":route,"reason":reason,"main_dependency":critical_text,"estimated_timeline_weeks":{"minimum":total[0],"maximum":total[1]}},"information_dependencies":df.to_dict("records"),"action_plan":plan_df.to_dict("records"),"timeline":timing.to_dict("records"),"potential_issues":[dict(zip(["potential_issue","warning_sign","recommended_response","review_point"],row)) for row in watch]}
 e1,e2,e3,e4=st.columns(4)
-e1.download_button("Download action plan",plan_df.to_csv(index=False),f"vitalize_action_plan_{safe_department}.csv","text/csv")
-e2.download_button("Download dependencies",df.to_csv(index=False),f"vitalize_dependencies_{safe_department}.csv","text/csv")
-e3.download_button("Download timeline",timing.to_csv(index=False),f"vitalize_timeline_{safe_department}.csv","text/csv")
-e4.download_button("Download full assessment",json.dumps(assessment,indent=2,default=str),f"vitalize_assessment_{safe_department}.json","application/json")
+e1.download_button("Download action plan",plan_df.to_csv(index=False),f"hospital_deployment_action_plan_{safe_department}.csv","text/csv")
+e2.download_button("Download dependencies",df.to_csv(index=False),f"hospital_deployment_dependencies_{safe_department}.csv","text/csv")
+e3.download_button("Download timeline",timing.to_csv(index=False),f"hospital_deployment_timeline_{safe_department}.csv","text/csv")
+e4.download_button("Download full assessment",json.dumps(assessment,indent=2,default=str),f"hospital_deployment_assessment_{safe_department}.json","application/json")
 with st.expander("Method and limitations"):
-    st.write("Hospital characteristics generate planning assumptions to test, not confirmed problems. Public cases inform common patterns but do not establish Vitalize's internal process or exact deployment duration.")
+    st.write("Hospital characteristics generate planning assumptions to test, not confirmed problems. Public cases inform common patterns but do not establish a vendor's internal process or exact deployment duration.")

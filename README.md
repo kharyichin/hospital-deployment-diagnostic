@@ -1,6 +1,6 @@
 # Hospital Deployment Risk Diagnostic
 
-One-page Streamlit prototype for choosing a deployment approach. It ports the workbook’s standard, phased and foundations-first choices. The top shows the recommendation, scope, trade-off, conditions that change the choice and unfinished launch work. Case-study detail and optional timing are expandable. Synthetic examples are editable, with separate saved inputs per example in the current session. It does not replace Vitalize’s playbook or predict hospital launch success.
+One-page Streamlit prototype for choosing a hospital deployment approach. It ports the workbook’s standard, phased and foundations-first choices. The top shows the recommendation, scope, trade-off, conditions that change the choice and unfinished launch work. Case-study detail and optional timing are expandable. Synthetic examples are editable, with separate saved inputs per example in the current session. It does not replace a vendor’s deployment playbook or predict hospital launch success.
 
 ## Run
 
@@ -19,7 +19,7 @@ Upload this folder to a GitHub repository. In Streamlit Community Cloud, choose 
 
 ## Dataset contract
 
-The default `My assessment` is unanswered, with no invented baseline. Fictional examples remain optional. HR/payroll build status and usable connections are separate form fields; their combination feeds the internal approach rule. A task independent of a concurrent HR/payroll build is assessed as a smaller rollout rather than automatically waiting for the entire build. The swimlane separates operations, IT/HR/payroll and Vitalize, with explicit rule/interface/practice return paths. Customer outcome values are hospital inputs. Desired reduction is baseline minus target; measured reduction is baseline minus observed. Neither is a causal estimate. Record a consistent population and measurement period.
+The default `My assessment` is unanswered, with no invented baseline. Fictional examples remain optional. HR/payroll build status and usable connections are separate form fields; their combination feeds the internal approach rule. A task independent of a concurrent HR/payroll build is assessed as a smaller rollout rather than automatically waiting for the entire build. The swimlane separates hospital operations, IT/HR/payroll and the deployment team, with explicit rule, interface and practice return paths. Customer outcome values are hospital inputs. Desired reduction is baseline minus target; measured reduction is baseline minus observed. Neither is a causal estimate. Record a consistent population and measurement period.
 
 `cases.json` separates source observations from proposed rule interpretations:
 
