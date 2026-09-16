@@ -40,13 +40,49 @@ def recommend(df,rules,owner):
 
 st.title("Hospital Deployment Planning Diagnostic")
 st.write("Assess the proposed rollout, identify what controls the first launch, and build a practical hospital-specific plan.")
-with st.expander("Start here: how to use this assessment",expanded=True):
-    st.write("Use an example to see how the recommendation changes, or choose **Current assessment** to enter a hospital's information.")
-    g1,g2,g3,g4=st.columns(4)
-    g1.markdown("**1. Choose a starting point**");g1.caption("Select an example or start a new assessment.")
-    g2.markdown("**2. Complete the four tabs**");g2.caption("Define the scope, current process, rules and required information.")
-    g3.markdown("**3. Review the plan**");g3.caption("See what can start, what needs resolution and who should act.")
-    g4.markdown("**4. Save the work**");g4.caption("Update progress, adjust the timeline and download the assessment.")
+
+TOUR_STEPS=[
+    ("What this tool does","Turn what is known about a proposed hospital rollout into a recommended approach, action plan and planning timeline."),
+    ("Choose where to begin","Open one of the three examples to see how different hospital conditions change the plan. Choose **Current assessment** when you are ready to enter a real case."),
+    ("Complete the assessment","Work through four tabs: scope of work, current process, rules and ownership, and systems and information. Use **Not confirmed** when the answer still needs checking."),
+    ("Use the result","Review what can start now, what needs to be resolved and who needs to act. Update the action tracker and timeline, then download the working files."),
+]
+
+@st.dialog("Quick tour")
+def show_tour():
+    step=st.session_state.get("tour_step",0)
+    title,body=TOUR_STEPS[step]
+    st.caption(f"Step {step+1} of {len(TOUR_STEPS)}")
+    st.progress((step+1)/len(TOUR_STEPS))
+    st.subheader(title)
+    st.write(body)
+    left,middle,right=st.columns([1,1,1])
+    if step>0 and left.button("Back",use_container_width=True):
+        st.session_state.tour_step-=1
+        st.rerun()
+    if middle.button("Skip tour",use_container_width=True):
+        st.session_state.tour_seen=True
+        st.rerun()
+    if step<len(TOUR_STEPS)-1:
+        if right.button("Next",type="primary",use_container_width=True):
+            st.session_state.tour_step+=1
+            st.rerun()
+    elif right.button("Start assessment",type="primary",use_container_width=True):
+        st.session_state.tour_seen=True
+        st.rerun()
+
+if "tour_seen" not in st.session_state:
+    st.session_state.tour_seen=False
+    st.session_state.tour_step=0
+
+if st.button("Take a quick tour"):
+    st.session_state.tour_seen=False
+    st.session_state.tour_step=0
+    st.rerun()
+
+if not st.session_state.tour_seen:
+    show_tour()
+
 choice=st.selectbox("Choose an assessment",list(EXAMPLES),index=1,help="Choose Current assessment for a new hospital. The examples demonstrate how different conditions change the recommendation.")
 st.caption("Examples use a fictional ICU rollout. Change any answer to see how the plan changes.")
 if st.button("Reset this selection"):
