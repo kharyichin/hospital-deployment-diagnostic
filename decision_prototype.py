@@ -38,51 +38,18 @@ def recommend(df,rules,owner):
     if owner!="Named":return "Name the hospital decision owner before configuration","The required information is available, but no one has been named to approve decisions and exceptions."
     return "Use the existing systems for a controlled first-department launch","The reported operating rules, decision owner and required information are ready for setup and testing."
 
-st.title("Hospital Deployment Planning Diagnostic")
+title_col,tour_col=st.columns([5,1])
+title_col.title("Hospital Deployment Planning Diagnostic")
+tour_col.write("")
+with tour_col.popover("Quick tour",use_container_width=True):
+    st.markdown("**Follow the assessment from start to finish**")
+    st.markdown("[**1. Choose a starting point**](#choose-an-assessment)  \nOpen an example or enter a real hospital case.")
+    st.markdown("[**2. Complete the assessment**](#1-hospital-and-rollout-assessment)  \nRecord the scope, current process, rules and required information.")
+    st.markdown("[**3. Review the rollout plan**](#2-recommended-rollout-plan)  \nSee what can start, what needs resolution and who needs to act.")
+    st.markdown("[**4. Save the work**](#6-download-working-files)  \nDownload the action plan, timeline or full assessment.")
 st.write("Assess the proposed rollout, identify what controls the first launch, and build a practical hospital-specific plan.")
 
-TOUR_STEPS=[
-    ("What this tool does","Turn what is known about a proposed hospital rollout into a recommended approach, action plan and planning timeline."),
-    ("Choose where to begin","Open one of the three examples to see how different hospital conditions change the plan. Choose **Current assessment** when you are ready to enter a real case."),
-    ("Complete the assessment","Work through four tabs: scope of work, current process, rules and ownership, and systems and information. Use **Not confirmed** when the answer still needs checking."),
-    ("Use the result","Review what can start now, what needs to be resolved and who needs to act. Update the action tracker and timeline, then download the working files."),
-]
-
-@st.dialog("Quick tour")
-def show_tour():
-    step=st.session_state.get("tour_step",0)
-    title,body=TOUR_STEPS[step]
-    st.caption(f"Step {step+1} of {len(TOUR_STEPS)}")
-    st.progress((step+1)/len(TOUR_STEPS))
-    st.subheader(title)
-    st.write(body)
-    left,middle,right=st.columns([1,1,1])
-    if step>0 and left.button("Back",use_container_width=True):
-        st.session_state.tour_step-=1
-        st.rerun()
-    if middle.button("Skip tour",use_container_width=True):
-        st.session_state.tour_seen=True
-        st.rerun()
-    if step<len(TOUR_STEPS)-1:
-        if right.button("Next",type="primary",use_container_width=True):
-            st.session_state.tour_step+=1
-            st.rerun()
-    elif right.button("Start assessment",type="primary",use_container_width=True):
-        st.session_state.tour_seen=True
-        st.rerun()
-
-if "tour_seen" not in st.session_state:
-    st.session_state.tour_seen=False
-    st.session_state.tour_step=0
-
-if st.button("Take a quick tour"):
-    st.session_state.tour_seen=False
-    st.session_state.tour_step=0
-    st.rerun()
-
-if not st.session_state.tour_seen:
-    show_tour()
-
+st.markdown('<span id="choose-an-assessment"></span>',unsafe_allow_html=True)
 choice=st.selectbox("Choose an assessment",list(EXAMPLES),index=1,help="Choose Current assessment for a new hospital. The examples demonstrate how different conditions change the recommendation.")
 st.caption("Examples use a fictional ICU rollout. Change any answer to see how the plan changes.")
 if st.button("Reset this selection"):
