@@ -40,7 +40,14 @@ def recommend(df,rules,owner):
 
 st.title("Hospital Deployment Planning Diagnostic")
 st.write("Assess the proposed rollout, identify what controls the first launch, and build a practical hospital-specific plan.")
-choice=st.selectbox("Current selection",list(EXAMPLES),index=1)
+with st.expander("Start here: how to use this assessment",expanded=True):
+    st.write("Use an example to see how the recommendation changes, or choose **Current assessment** to enter a hospital's information.")
+    g1,g2,g3,g4=st.columns(4)
+    g1.markdown("**1. Choose a starting point**");g1.caption("Select an example or start a new assessment.")
+    g2.markdown("**2. Complete the four tabs**");g2.caption("Define the scope, current process, rules and required information.")
+    g3.markdown("**3. Review the plan**");g3.caption("See what can start, what needs resolution and who should act.")
+    g4.markdown("**4. Save the work**");g4.caption("Update progress, adjust the timeline and download the assessment.")
+choice=st.selectbox("Choose an assessment",list(EXAMPLES),index=1,help="Choose Current assessment for a new hospital. The examples demonstrate how different conditions change the recommendation.")
 st.caption("Examples use a fictional ICU rollout. Change any answer to see how the plan changes.")
 if st.button("Reset this selection"):
     for key in list(st.session_state):
@@ -50,10 +57,10 @@ profile0,governance0,rules0,owner0=EXAMPLES[choice]
 
 st.header("1. Hospital and rollout assessment")
 st.info("Answers reflect the information available today. Record how each system answer was checked, then verify the workflow with the responsible hospital teams during discovery.")
-a,b,c,d=st.tabs(["Scope of work","Current process","Rules and ownership","Systems and information"])
+a,b,c,d=st.tabs(["1. Scope of work","2. Current process","3. Rules and ownership","4. Systems and information"])
 with a:
     x,y=st.columns(2)
-    solution=x.selectbox("Deployment scope",list(SOLUTIONS)); capabilities=x.multiselect("Capabilities included in the first rollout",SOLUTIONS[solution],default=SOLUTIONS[solution][:2])
+    solution=x.selectbox("Deployment scope",list(SOLUTIONS),help="Choose the hospital workflow this assessment will plan. Keep the first rollout narrow enough to test completely."); capabilities=x.multiselect("Capabilities included in the first rollout",SOLUTIONS[solution],default=SOLUTIONS[solution][:2],help="Select only the capabilities intended for the first ward, department or hospital.")
     department=y.text_input("First ward or department",value="ICU"); staff=y.multiselect("Staff groups included",["Nurses","Nurse managers","Central staffing team","Allied health","Physicians or advanced practice providers","Hospital executives","Other"],default=["Nurses","Nurse managers","Central staffing team"]); sites=y.number_input("Hospitals included in the first rollout",1,value=1)
 with b:
     x,y=st.columns(2)
