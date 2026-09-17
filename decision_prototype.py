@@ -126,7 +126,7 @@ with a:
     solution=x.selectbox("Deployment scope",solution_options,index=solution_options.index(solution_default),key=f"solution:{form_key}",help="Choose the hospital workflow this assessment will plan. Keep the first rollout narrow enough to test completely.")
     loaded_capabilities=[item for item in loaded_scope.get("capabilities",[]) if item in SOLUTIONS[solution]]
     capabilities=x.multiselect("Capabilities included in the first rollout",SOLUTIONS[solution],default=loaded_capabilities or SOLUTIONS[solution][:2],key=f"capabilities:{form_key}",help="Select only the capabilities intended for the first ward, department or hospital.")
-    department=y.text_input("First ward or department",value=loaded_scope.get("department","ICU"),key=f"department:{form_key}")
+    department=y.text_input("Name of First ward or department",value=loaded_scope.get("department","ICU"),key=f"department:{form_key}")
     staff_options=["Nurses","Nurse managers","Central staffing team","Allied health","Physicians or advanced practice providers","Hospital executives","Other"]
     staff=y.multiselect("Staff groups included",staff_options,default=[item for item in loaded_scope.get("staff_groups",["Nurses","Nurse managers","Central staffing team"]) if item in staff_options],key=f"staff:{form_key}")
     sites=y.number_input("Hospitals included in the first rollout",1,value=int(loaded_scope.get("hospitals",1)),key=f"sites:{form_key}")
