@@ -18,6 +18,23 @@ ROWS={
  list(EXAMPLES)[2]:[["Employee IDs and department assignments","Workday","Available and stable","Existing file transfer","Yes","Not needed","Document reviewed"],["Qualifications and shift eligibility","QGenda","Available and stable","Not confirmed","Yes","Not confirmed","Not confirmed"],["Patient demand and required coverage","Epic","Available and stable","New connection required","Yes","Not confirmed","Reported by stakeholder"]],
  list(EXAMPLES)[3]:[["Employee IDs and department assignments","Workday","Being replaced","Not confirmed","Yes","Allowed for first department","Reported by stakeholder"],["Qualifications and shift eligibility","QGenda","Available and stable","Direct connection","Yes","Not needed","Observed in practice"],["Patient demand and required coverage","Epic","Available and stable","Direct connection","Yes","Not needed","Document reviewed"]]}
 SOLUTIONS={"Workforce management":["Creating and balancing schedules","Managing vacant shifts and staff outreach","Shift pickup and swaps","Time-off management","Staff deployment across departments","Pay coding","Staffing recommendations based on patient demand"],"Flow and capacity operations":["Patient-surge forecasting","Discharge forecasting","Identifying patient-flow bottlenecks","Connecting capacity forecasts to staffing decisions"],"Executive analytics":["Staffing-risk alerts","Visibility across hospitals and departments","Labor and capacity reporting"]}
+SCOPE_QUESTIONS={
+    "Workforce management":{
+        "method":("How are schedules and open shifts managed today?",["One central staffing process","Each department manages its own","Shared between central and department teams","Not confirmed"]),
+        "decision":("What determines who can take a shift?",["Qualifications and availability","Qualifications, availability and employment rules","Manager judgement","Not confirmed"]),
+        "manual":("Which parts still require manual follow-up?",["Collecting availability","Checking qualifications","Contacting staff about open shifts","Approving swaps or overtime","Correcting time or pay codes","None identified","Not confirmed"]),
+    },
+    "Flow and capacity operations":{
+        "method":("How are changes in patient demand and capacity identified?",["Live operational system","Shift handovers or operational huddles","Spreadsheets, calls or messages","Not confirmed"]),
+        "decision":("How often must capacity information be updated?",["Continuously or near real time","At each shift change","Daily","Not confirmed"]),
+        "manual":("Which parts still require manual coordination?",["Confirming available beds","Confirming expected discharges","Escalating capacity constraints","Matching staffing to demand","None identified","Not confirmed"]),
+    },
+    "Executive analytics":{
+        "method":("How are staffing and capacity reports produced today?",["Automatically from shared systems","Combined manually from several systems","Each department produces its own reports","Not confirmed"]),
+        "decision":("Are the reported measures defined the same way across departments?",["Yes, the definitions are shared","Some definitions differ","Definitions differ substantially","Not confirmed"]),
+        "manual":("Which parts still require manual work?",["Collecting data","Reconciling conflicting figures","Producing reports","Following up on alerts","None identified","Not confirmed"]),
+    },
+}
 INFO=["Employee IDs and department assignments","Qualifications and shift eligibility","Availability and approved leave","Existing rosters and vacant shifts","Patient demand and required coverage","Actual worked hours","Payroll codes"]
 SYSTEMS=["Workday","Oracle PeopleSoft","Oracle Fusion Cloud HCM","UKG Pro WFM / Dimensions","UKG Workforce Central / Kronos","QGenda","symplr Smart Square","M7","Epic","MEDITECH","Spreadsheet or paper","Other","Not confirmed"]
 PLATFORM_ITEMS=[
@@ -148,13 +165,38 @@ with b:
             placeholder="Example: ICU shift swaps require charge-nurse approval, while medical wards allow manager approval.",
             key=f"variation_details:{form_key}",
         )
-    exception_options=["Sick calls","Vacant shifts","Shift swaps","Overtime approval","Float staff","Staff reassignment","Downtime or connection failure","Not confirmed"]
-    exceptions=y.multiselect("Which situations regularly require manual decisions?",exception_options,default=[item for item in loaded_context.get("exceptions",["Vacant shifts"]) if item in exception_options],key=f"exceptions:{form_key}")
+    exception_options={
+        "Workforce management":["Sick calls","Vacant shifts","Shift swaps","Overtime approval","Float staff","Staff reassignment","Downtime or connection failure","Not confirmed"],
+        "Flow and capacity operations":["Unexpected demand surge","Delayed discharge","Bed unavailable","Staffing does not match demand","Patient-transfer delay","Downtime or connection failure","Not confirmed"],
+        "Executive analytics":["Conflicting figures","Delayed report","Alert has no assigned owner","Hospital or department cannot be compared","Missing source data","Not confirmed"],
+    }[solution]
+    exception_default=["Vacant shifts"] if solution=="Workforce management" else [exception_options[0]]
+    exceptions=y.multiselect("Which situations regularly require manual decisions?",exception_options,default=[item for item in loaded_context.get("exceptions",exception_default) if item in exception_options],key=f"exceptions:{solution}:{form_key}")
+    st.markdown(f"**Questions for {solution.lower()}**")
+    scope_questions=SCOPE_QUESTIONS[solution]
+    scope_method_options=scope_questions["method"][1]
+    scope_method_default=loaded_context.get("scope_method",scope_method_options[0] if choice==list(EXAMPLES)[1] else scope_method_options[-1])
+    scope_method=st.selectbox(scope_questions["method"][0],scope_method_options,index=scope_method_options.index(scope_method_default) if scope_method_default in scope_method_options else len(scope_method_options)-1,key=f"scope_method:{solution}:{form_key}")
+    scope_decision_options=scope_questions["decision"][1]
+    scope_decision_default=loaded_context.get("scope_decision",scope_decision_options[0] if choice==list(EXAMPLES)[1] else scope_decision_options[-1])
+    scope_decision=st.selectbox(scope_questions["decision"][0],scope_decision_options,index=scope_decision_options.index(scope_decision_default) if scope_decision_default in scope_decision_options else len(scope_decision_options)-1,key=f"scope_decision:{solution}:{form_key}")
+    scope_manual_options=scope_questions["manual"][1]
+    scope_manual_default=[item for item in loaded_context.get("scope_manual",["None identified"] if choice==list(EXAMPLES)[1] else [scope_manual_options[-1]]) if item in scope_manual_options]
+    scope_manual=st.multiselect(scope_questions["manual"][0],scope_manual_options,default=scope_manual_default,key=f"scope_manual:{solution}:{form_key}")
 with c:
     x,y=st.columns(2); rule_options=["Documented and confirmed","Written, but some rules need confirmation","Used in practice but not fully documented","Not documented","Not confirmed"]
     rules_default=loaded_context.get("rules",rules0);rules=x.selectbox("How are the current operating rules recorded?",rule_options,index=rule_options.index(rules_default) if rules_default in rule_options else 4,key=f"rules:{form_key}")
     labor_options=["Union or contract rules apply","No union or contract rules identified","Not confirmed"];labor_default=loaded_context.get("labor_rules",labor_options[0])
     labor=x.selectbox("Do union or employment-contract rules apply?",labor_options,index=labor_options.index(labor_default) if labor_default in labor_options else 2,key=f"labor:{form_key}")
+    labor_groups=[];labor_requirements=[];labor_confirmation="Not required"
+    if labor=="Union or contract rules apply":
+        labor_group_options=["Nurses","Allied health","Physicians or advanced practice providers","Other staff groups","Not confirmed"]
+        labor_groups=x.multiselect("Which staff groups are covered?",labor_group_options,default=[item for item in loaded_context.get("labor_groups",["Nurses"] if choice==list(EXAMPLES)[1] else ["Not confirmed"]) if item in labor_group_options],key=f"labor_groups:{form_key}")
+        labor_requirement_options=["Shift bidding or seniority","Minimum rest periods","Overtime","Shift swaps","Reassignment between departments","Other","Not confirmed"]
+        labor_requirements=x.multiselect("Which parts of the workflow are affected?",labor_requirement_options,default=[item for item in loaded_context.get("labor_requirements",["Shift bidding or seniority","Overtime"] if choice==list(EXAMPLES)[1] else ["Not confirmed"]) if item in labor_requirement_options],key=f"labor_requirements:{form_key}")
+        labor_confirmation_options=["Confirmed with Labor Relations","Needs confirmation","Not confirmed"]
+        labor_confirmation_default=loaded_context.get("labor_confirmation",labor_confirmation_options[0] if choice==list(EXAMPLES)[1] else labor_confirmation_options[-1])
+        labor_confirmation=x.selectbox("Have these requirements been confirmed?",labor_confirmation_options,index=labor_confirmation_options.index(labor_confirmation_default) if labor_confirmation_default in labor_confirmation_options else 2,key=f"labor_confirmation:{form_key}")
     owner_options=["Named","Not named","Not confirmed"];owner_default=loaded_context.get("decision_owner",owner0)
     owner=y.selectbox("Is a hospital decision-maker named for this scope?",owner_options,index=owner_options.index(owner_default) if owner_default in owner_options else 2,key=f"owner:{form_key}")
     approver_options=["Nursing operations","Department managers","Central staffing office","Hospital IT","HR or payroll","Labor Relations","Information security or privacy","Not confirmed"]
@@ -179,7 +221,10 @@ platform_df=pd.DataFrame(platform_rows)
 platform_open=platform_df[platform_df["Status"]!="Ready and checked"]
 route,reason=recommend(df,rules,owner); critical=required[required.Status.isin(["Must wait","Temporary route available","Connection required","Needs confirmation"])]
 critical_text="None" if critical.empty else f'{critical.iloc[0]["Information needed"]} from {critical.iloc[0]["Source system"]}'
-items_to_resolve=len(critical)+int(rules!="Documented and confirmed")+int(owner!="Named")+len(platform_open)
+scope_unknown=scope_method=="Not confirmed" or scope_decision=="Not confirmed" or "Not confirmed" in scope_manual
+scope_manual_work=[item for item in scope_manual if item not in ["None identified","Not confirmed"]]
+labor_work=labor=="Union or contract rules apply" and (labor_confirmation!="Confirmed with Labor Relations" or "Not confirmed" in labor_groups or "Not confirmed" in labor_requirements)
+items_to_resolve=len(critical)+int(rules!="Documented and confirmed")+int(owner!="Named")+len(platform_open)+int(scope_unknown)+int(labor_work)
 
 st.header("2. Recommended rollout plan")
 st.subheader("What this assessment found")
@@ -188,7 +233,7 @@ ready_details=[f'{r["Information needed"]} — {r["Source system"]}, {r["Transfe
 ready_systems=[item for item in ready_required["Source system"].dropna().unique().tolist() if item!="Not confirmed"]
 selected_tasks=[item.lower() for item in capabilities]
 task_text=", ".join(selected_tasks[:-1])+(" and "+selected_tasks[-1] if len(selected_tasks)>1 else selected_tasks[0] if selected_tasks else "the selected tasks")
-hospital_ready=critical.empty and rules=="Documented and confirmed" and owner=="Named"
+hospital_ready=critical.empty and rules=="Documented and confirmed" and owner=="Named" and not scope_unknown and not labor_work
 testing_ready=hospital_ready and platform_open.empty
 if testing_ready:
     system_text=", ".join(ready_systems[:-1])+(" and "+ready_systems[-1] if len(ready_systems)>1 else ready_systems[0] if ready_systems else "the confirmed source systems")
@@ -207,10 +252,21 @@ elif rules!="Documented and confirmed":
 elif owner!="Named":
     recommended_next_move="Name the hospital decision-maker before configuration begins."
     playbook_name="Decision ownership"
-else:
+elif scope_unknown:
+    recommended_next_move=f"Confirm how {solution.lower()} works today in {department} before finalising the rollout plan."
+    playbook_name=f"{solution}: workflow discovery"
+    reason="The selected workflow is not sufficiently confirmed to define its configuration and test scenarios."
+elif labor_work:
+    recommended_next_move="Confirm the employment requirements that affect the selected workflow before configuration begins."
+    playbook_name="Employment-rule confirmation"
+    reason="Employment requirements affect the workflow, but the covered groups or applicable rules are not fully confirmed."
+elif not platform_open.empty:
     first_platform=platform_open.iloc[0]
     recommended_next_move=f'Complete the platform preparation for {department}. Start with: {first_platform["Item"].lower()}.'
     playbook_name=f'Platform preparation: {first_platform["Item"].lower()}'
+else:
+    recommended_next_move=f"Complete the remaining preparation for {task_text} in {department}."
+    playbook_name=f"{solution}: first-department preparation"
 with st.container(border=True):
     st.markdown("**Recommended next move**")
     st.subheader(recommended_next_move)
@@ -222,6 +278,8 @@ m3.metric("Items to resolve before complete testing",items_to_resolve)
 resolve=[]
 if owner!="Named":resolve.append("Name the hospital decision-maker for this rollout.")
 if rules!="Documented and confirmed":resolve.append("Confirm the operating rules and exceptions used by the first department.")
+if scope_unknown:resolve.append(f"Confirm the unanswered questions about how {solution.lower()} works today.")
+if labor_work:resolve.append("Confirm the covered staff groups and employment requirements with Labor Relations.")
 for _,r in critical.iterrows():
     issue_text={"Needs confirmation":"the source or transfer method has not been confirmed","Connection required":"a new connection must be built and tested","Temporary route available":"the source system is changing, but a temporary transfer may be used","Must wait":"the information is unavailable and no alternative has been approved"}[r["Status"]]
     resolve.append(f'{r["Information needed"]} from {r["Source system"]}: {issue_text}.')
@@ -230,6 +288,8 @@ for _,r in platform_open.iterrows():
 ready_summary=[]
 if owner=="Named":ready_summary.append("Hospital decision-maker named")
 if rules=="Documented and confirmed":ready_summary.append("Operating rules and exceptions confirmed")
+if not scope_unknown:ready_summary.append(f"Current {solution.lower()} workflow described")
+if labor=="No union or contract rules identified" or labor_confirmation=="Confirmed with Labor Relations":ready_summary.append("Employment-rule requirements confirmed")
 ready_summary.extend(ready_details)
 for _,r in platform_df[platform_df["Status"]=="Ready and checked"].iterrows():ready_summary.append(f'Platform: {r["Item"].lower()} ready and checked')
 left,right=st.columns(2,gap="large")
@@ -253,11 +313,20 @@ with st.container(border=True):
     playbook_right.button("Open playbook",disabled=True,use_container_width=True,help="Placeholder for an internal knowledge-base or workflow link.")
 
 plan=[[False,1,"Observe the current workflow, exceptions and baseline for the selected scope.","Every rollout needs an observed starting point before configuration.","Deployment team","Hospital operations and intended users","Days 1–3"]]
+if sites>1:
+    plan.append([False,len(plan)+1,"Compare the selected workflow across the hospitals in the first rollout.",f"The first rollout includes {int(sites)} hospitals. The same setup should only be reused where the workflow, rules and systems match.","Deployment team","Hospital operations and department managers","Do together with item 1"])
 if variation in ["Some local differences","Process differs by department"]:
     difference_reason=variation_details.strip() or "The assessment reports differences between departments, but they have not been described yet."
     plan.append([False,len(plan)+1,"Compare the affected departments and document which rules, approvals and exceptions require a different setup.",difference_reason,"Deployment team","Department managers and intended users","Do together with item 1"])
 if owner!="Named":plan.append([False,len(plan)+1,"Name the hospital decision-maker for the first rollout.","The assessment does not have a confirmed decision owner.","Hospital sponsor","Deployment team and department leadership","Days 1–3"])
 if rules!="Documented and confirmed":plan.append([False,len(plan)+1,"Confirm the first department's operating rules and exceptions.",f'Current rules are recorded as: {rules.lower()}.' ,"Deployment team","Department managers and Nursing operations"+("; Labor Relations" if labor=="Union or contract rules apply" else ""),"Days 4–7"])
+if scope_unknown:
+    plan.append([False,len(plan)+1,f"Confirm how {solution.lower()} works today in {department}.","At least one scope-specific workflow answer is not confirmed.","Deployment team","Department operators and intended users","Do together with workflow observation"])
+if scope_manual_work:
+    plan.append([False,len(plan)+1,f"Map the manual steps for {', '.join(item.lower() for item in scope_manual_work)} and decide what the first rollout must replace or retain.","These parts of the selected workflow still require manual work.","Deployment team","Department operators and intended users","Complete before platform setup"])
+if labor_work:
+    affected=", ".join(item.lower() for item in labor_requirements if item!="Not confirmed") or "the affected employment requirements"
+    plan.append([False,len(plan)+1,f"Confirm {affected} with Labor Relations before entering the rules in the platform.","Union or employment-contract requirements apply but have not been fully confirmed.","Hospital operations","Labor Relations and the deployment team","Complete before rule configuration"])
 for _,r in critical.iterrows():
     if r["Status"]=="Needs confirmation":action=f'Confirm the source and transfer method for {r["Information needed"].lower()} from {r["Source system"]}.'
     elif r["Status"]=="Connection required":action=f'Build and test the transfer of {r["Information needed"].lower()} from {r["Source system"]}.'
@@ -303,10 +372,22 @@ with st.expander("View all required information paths"):
     st.dataframe(df[["Information needed","Source system","Source status","Transfer method","How this was checked","Status"]],hide_index=True,width="stretch")
 
 st.header("3. Estimated timeline")
-st.write("Recommended planning time. Edit the ranges when hospital or vendor estimates are available.")
-complexity=int(sites>1)+int(variation!="Same process in first-wave departments")+int(labor=="Union or contract rules apply")+int(profile=="Academic medical center"); connections=int(required.Status.isin(["Connection required","Temporary route available","Must wait","Needs confirmation"]).sum())
+st.write("The estimate is calculated from the work generated by the assessment. Edit the ranges when hospital or vendor estimates are available.")
+discovery_tasks=1+int(sites>1)+int(variation!="Same process in first-wave departments")+int(scope_unknown)+int(bool(scope_manual_work))
+rule_tasks=int(rules!="Documented and confirmed")+int(labor_work)
+connections=int(required.Status.isin(["Connection required","Temporary route available","Must wait","Needs confirmation"]).sum())
 platform_work=max(1,len(platform_open))
-timing=pd.DataFrame([["Workflow discovery",1,2+min(complexity,2),"Access to department operators"],["Rule confirmation",1,1+(2 if rules!="Documented and confirmed" else 0)+(1 if labor=="Union or contract rules apply" else 0),"Observed workflow"],["Information and connection preparation",1,2+connections*2,"Confirmed sources, access and owners"],["Platform preparation and end-to-end testing",2,3+min(platform_work,3),"Confirmed rules, usable information paths and completed platform setup"],["User preparation and controlled launch",1,2,"Completed end-to-end testing"]],columns=["Work package","Recommended minimum weeks","Recommended maximum weeks","Must be completed first"])
+forecast_drivers=[["Observe the selected workflow","Included for every rollout"]]
+if sites>1:forecast_drivers.append(["Compare hospitals",f"The first rollout includes {int(sites)} hospitals"])
+if variation!="Same process in first-wave departments":forecast_drivers.append(["Compare departments",f"Department variation is recorded as: {variation.lower()}"])
+if scope_unknown:forecast_drivers.append(["Confirm the current workflow",f"At least one {solution.lower()} answer is not confirmed"])
+if scope_manual_work:forecast_drivers.append(["Map manual handoffs",f'{len(scope_manual_work)} manual part(s) were identified'])
+if rule_tasks:forecast_drivers.append(["Confirm operating or employment rules",f"{rule_tasks} rule-confirmation task(s) were generated"])
+if connections:forecast_drivers.append(["Prepare information connections",f"{connections} required information path(s) need work"])
+if len(platform_open):forecast_drivers.append(["Prepare the platform",f"{len(platform_open)} platform item(s) are not ready and checked"])
+st.markdown("**Work included in this estimate**")
+st.dataframe(pd.DataFrame(forecast_drivers,columns=["Generated work","Why it is included"]),hide_index=True,width="stretch")
+timing=pd.DataFrame([["Workflow discovery",1,2+min(discovery_tasks-1,3),"Access to department operators"],["Rule confirmation",1,1+min(rule_tasks*2,3),"Observed workflow"],["Information and connection preparation",1,2+connections*2,"Confirmed sources, access and owners"],["Platform preparation and end-to-end testing",2,3+min(platform_work,3),"Confirmed rules, usable information paths and completed platform setup"],["User preparation and controlled launch",1,2,"Completed end-to-end testing"]],columns=["Work package","Recommended minimum weeks","Recommended maximum weeks","Must be completed first"])
 saved_timing=loaded.get("timeline")
 if saved_timing:
     saved_timing_df=pd.DataFrame(saved_timing)
@@ -321,11 +402,11 @@ st.caption("Rule confirmation and information preparation occupy the same weeks.
 
 st.subheader("Planning estimates")
 effort=pd.DataFrame([
-    ["Workflow discovery",3,5+complexity],
-    ["Rule confirmation",2,3+complexity],
+    ["Workflow discovery",3,5+discovery_tasks*2],
+    ["Rule confirmation",2,3+rule_tasks*2],
     ["Information and connection preparation",3,5+connections*2],
     ["Configuration and workflow testing",5,8+connections],
-    ["User preparation and controlled launch",3,5+min(complexity,2)],
+    ["User preparation and controlled launch",3,5+int(bool(scope_manual_work))+int(variation!="Same process in first-wave departments")],
 ],columns=["Work package","Estimated minimum person-days","Estimated maximum person-days"])
 saved_effort=loaded.get("effort_estimate")
 if saved_effort:
@@ -353,7 +434,9 @@ with st.expander("Estimate a later rollout wave"):
 st.header("4. Potential issues and flags")
 watch=[]
 if variation!="Same process in first-wave departments":watch.append(["Department variation",variation_details.strip() or "The departments may use different rules, approvals or exceptions for the same work.","Compare first-wave departments before copying a configuration.","Before configuration","Likely","Major"])
-if labor=="Union or contract rules apply":watch.append(["Union and employment agreement requirements","The observed shift-bidding order, minimum rest period, overtime rule or approval process differs from the applicable agreement.","Review the specific requirement with Labor Relations and update the workflow before configuration.","While confirming operating rules","Possible","Major"])
+if labor_work:watch.append(["Union and employment agreement requirements","The covered staff groups or applicable employment requirements have not been fully confirmed.","Confirm the affected workflow rules with Labor Relations before configuration.","While confirming operating rules","Possible","Major"])
+if scope_unknown:watch.append(["Unconfirmed current workflow",f"The team cannot yet describe how {solution.lower()} works today.","Observe the selected workflow and confirm the unanswered scope-specific questions.","During workflow discovery","Likely","Major"])
+if scope_manual_work:watch.append(["Manual workflow handoffs",f'Manual work remains in: {", ".join(item.lower() for item in scope_manual_work)}.',"Map each handoff and decide whether the first rollout will replace, support or retain it.","During workflow discovery","Possible","Moderate"])
 if governance=="Department-level managers":watch.append(["Uneven local adoption","Departments continue using calls, texts or spreadsheets after testing.","Include department managers in observation, testing and issue review.","During testing and first launch","Possible","Moderate"])
 if not watch:watch=[["Local workflow mismatch","The selected department behaves differently from the reported process.","Update the workflow and rules before complete testing.","During observation and testing","Possible","Moderate"]]
 watch_columns=["Potential issue","Warning sign","Recommended response","Review point","Likelihood","Impact"]
@@ -377,7 +460,7 @@ watch=watch_df.values.tolist()
 st.header("5. Deployment decision brief")
 states=required.Status.tolist()
 if "Must wait" in states:readiness="Waiting on a required system"
-elif any(s in states for s in ["Temporary route available","Connection required","Needs confirmation"]) or rules!="Documented and confirmed" or owner!="Named":readiness="Hospital preparation required before end-to-end testing"
+elif any(s in states for s in ["Temporary route available","Connection required","Needs confirmation"]) or rules!="Documented and confirmed" or owner!="Named" or scope_unknown or labor_work:readiness="Hospital preparation required before end-to-end testing"
 elif not platform_open.empty:readiness="Platform preparation required before end-to-end testing"
 else:readiness="Ready for end-to-end testing"
 if "Temporary route available" in states:decision_needed="Approve a temporary information transfer for the first department or wait for the permanent source."
@@ -385,6 +468,8 @@ elif "Needs confirmation" in states:decision_needed="Confirm the unresolved info
 elif "Connection required" in states:decision_needed="Confirm who will prepare the required connection and agree its planning time."
 elif owner!="Named":decision_needed="Name the hospital decision-maker for the first scope."
 elif rules!="Documented and confirmed":decision_needed="Confirm the first department's operating rules before setup."
+elif scope_unknown:decision_needed=f"Confirm how {solution.lower()} works today before finalising the setup."
+elif labor_work:decision_needed="Confirm the affected staff groups and employment requirements with Labor Relations."
 elif not platform_open.empty:decision_needed=f'Complete and check the remaining platform preparation, starting with {platform_open.iloc[0]["Item"].lower()}.'
 else:decision_needed="Proceed with first-department setup and complete workflow testing."
 critical_package=timing.loc[timing["Recommended maximum weeks"].astype(float).idxmax(),"Work package"]
@@ -399,7 +484,7 @@ st.markdown("**Before expanding**  \nConfirm that the department is using the wo
 
 st.header("6. Download working files")
 safe_department=re.sub(r"[^a-z0-9]+","_",department.lower()).strip("_") or "department"
-assessment={"selection":choice,"scope":{"solution":solution,"capabilities":capabilities,"department":department,"staff_groups":staff,"hospitals":sites},"hospital_context":{"type":profile,"current_owner":governance,"process_variation":variation,"process_variation_details":variation_details,"manual_work":manual,"exceptions":exceptions,"rules":rules,"labor_rules":labor,"decision_owner":owner,"approvers":approvers},"recommended_rollout":{"route":route,"reason":reason,"main_dependency":critical_text,"estimated_timeline_weeks":{"minimum":total[0],"maximum":total[1]}},"information_dependencies":df.to_dict("records"),"platform_preparation":platform_df.to_dict("records"),"action_plan":plan_df.to_dict("records"),"timeline":timing.to_dict("records"),"effort_estimate":effort.to_dict("records"),"expansion_estimate":{"departments":next_departments,"hospitals":next_hospitals,"reuse":reuse,"minimum_weeks":wave_min,"maximum_weeks":wave_max},"potential_issues":[{"potential_issue":r["Potential issue"],"warning_sign":r["Warning sign"],"recommended_response":r["Recommended response"],"review_point":r["Review point"],"likelihood":r["Likelihood"],"impact":r["Impact"],"priority":r["Priority"]} for _,r in watch_df.iterrows()]}
+assessment={"selection":choice,"scope":{"solution":solution,"capabilities":capabilities,"department":department,"staff_groups":staff,"hospitals":sites},"hospital_context":{"type":profile,"current_owner":governance,"process_variation":variation,"process_variation_details":variation_details,"manual_work":manual,"exceptions":exceptions,"scope_method":scope_method,"scope_decision":scope_decision,"scope_manual":scope_manual,"rules":rules,"labor_rules":labor,"labor_groups":labor_groups,"labor_requirements":labor_requirements,"labor_confirmation":labor_confirmation,"decision_owner":owner,"approvers":approvers},"recommended_rollout":{"route":route,"reason":reason,"main_dependency":critical_text,"estimated_timeline_weeks":{"minimum":total[0],"maximum":total[1]}},"information_dependencies":df.to_dict("records"),"platform_preparation":platform_df.to_dict("records"),"action_plan":plan_df.to_dict("records"),"timeline":timing.to_dict("records"),"effort_estimate":effort.to_dict("records"),"expansion_estimate":{"departments":next_departments,"hospitals":next_hospitals,"reuse":reuse,"minimum_weeks":wave_min,"maximum_weeks":wave_max},"potential_issues":[{"potential_issue":r["Potential issue"],"warning_sign":r["Warning sign"],"recommended_response":r["Recommended response"],"review_point":r["Review point"],"likelihood":r["Likelihood"],"impact":r["Impact"],"priority":r["Priority"]} for _,r in watch_df.iterrows()]}
 e1,e2,e3,e4=st.columns(4)
 e1.download_button("Download action plan",plan_df.to_csv(index=False),f"hospital_deployment_action_plan_{safe_department}.csv","text/csv")
 e2.download_button("Download dependencies",df.to_csv(index=False),f"hospital_deployment_dependencies_{safe_department}.csv","text/csv")
