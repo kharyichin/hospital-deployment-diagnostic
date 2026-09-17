@@ -20,6 +20,14 @@ ROWS={
 SOLUTIONS={"Workforce management":["Creating and balancing schedules","Managing vacant shifts and staff outreach","Shift pickup and swaps","Time-off management","Staff deployment across departments","Pay coding","Staffing recommendations based on patient demand"],"Flow and capacity operations":["Patient-surge forecasting","Discharge forecasting","Identifying patient-flow bottlenecks","Connecting capacity forecasts to staffing decisions"],"Executive analytics":["Staffing-risk alerts","Visibility across hospitals and departments","Labor and capacity reporting"]}
 INFO=["Employee IDs and department assignments","Qualifications and shift eligibility","Availability and approved leave","Existing rosters and vacant shifts","Patient demand and required coverage","Actual worked hours","Payroll codes"]
 SYSTEMS=["Workday","Oracle PeopleSoft","Oracle Fusion Cloud HCM","UKG Pro WFM / Dimensions","UKG Workforce Central / Kronos","QGenda","symplr Smart Square","M7","Epic","MEDITECH","Spreadsheet or paper","Other","Not confirmed"]
+PLATFORM_ITEMS=[
+    ("Department setup", "Has the first ward or department been created in the platform?"),
+    ("Users and access", "Have the staff, managers and access levels for the first rollout been set up?"),
+    ("Operating rules", "Have the approved scheduling, approval and exception rules been entered?"),
+    ("Data mapping", "Have the required hospital fields been matched to the correct platform fields?"),
+    ("Test setup", "Are test users, sample data and normal and exception scenarios ready?"),
+]
+PLATFORM_STATUS=["Not checked","Not started","In progress","Ready and checked"]
 
 def status(r):
     if r["Required before first launch"]=="No":return "Not required for first launch"
@@ -41,7 +49,7 @@ def recommend(df,rules,owner):
 
 TOUR_STEPS=[
     ("Choose a starting point","Open an example to see how conditions change the plan, or choose Current assessment for a real case.","choose-an-assessment"),
-    ("Complete the assessment","Record the scope, current process, operating rules and information needed for the first rollout.","1-hospital-and-rollout-assessment"),
+    ("Complete the assessment","Record the hospital conditions and confirm what must be prepared inside the platform.","1-hospital-and-rollout-assessment"),
     ("Review the rollout plan","See what can start now, what needs resolution and who needs to act.","2-recommended-rollout-plan"),
     ("Save the work","Download the action plan, timeline or full assessment for the team.","6-download-working-files"),
 ]
@@ -111,7 +119,7 @@ loaded_context=loaded.get("hospital_context",{})
 
 st.header("1. Hospital and rollout assessment")
 st.info("Answers reflect the information available today. Record how each system answer was checked, then verify the workflow with the responsible hospital teams during discovery.")
-a,b,c,d=st.tabs(["1. Scope of work","2. Current process","3. Rules and ownership","4. Systems and information"])
+a,b,c,d,e=st.tabs(["1. Scope of work","2. Current process","3. Rules and ownership","4. Systems and information","5. Platform preparation"])
 with a:
     x,y=st.columns(2)
     solution_options=list(SOLUTIONS);solution_default=loaded_scope.get("solution") if loaded_scope.get("solution") in solution_options else solution_options[0]
@@ -148,11 +156,22 @@ with d:
     default=loaded.get("information_dependencies") or ROWS.get(choice,[["Employee IDs and department assignments","Not confirmed","Not confirmed","Not confirmed","Yes","Not confirmed","Not confirmed"],["Qualifications and shift eligibility","Not confirmed","Not confirmed","Not confirmed","Yes","Not confirmed","Not confirmed"],["Patient demand and required coverage","Not confirmed","Not confirmed","Not confirmed","Yes","Not confirmed","Not confirmed"]])
     raw=pd.DataFrame(default);raw=raw[columns] if set(columns).issubset(raw.columns) else pd.DataFrame(default,columns=columns)
     flows=st.data_editor(raw,hide_index=True,width="stretch",num_rows="dynamic",key=f"flows:{choice}:{form_key}",column_config={"Information needed":st.column_config.SelectboxColumn(options=INFO),"Source system":st.column_config.SelectboxColumn(options=SYSTEMS),"Source status":st.column_config.SelectboxColumn(options=["Available and stable","Being replaced","New system being introduced","Not available","Not confirmed"]),"Transfer method":st.column_config.SelectboxColumn(options=["Direct connection","Existing scheduled file","File upload","Manual entry","Same system","New connection required","Not confirmed"]),"Required before first launch":st.column_config.SelectboxColumn(options=["Yes","No"]),"Temporary route":st.column_config.SelectboxColumn(options=["Not needed","Allowed for first department","Not allowed","Not confirmed"]),"How this was checked":st.column_config.SelectboxColumn(options=["Reported by stakeholder","Document reviewed","Observed in practice","Tested successfully","Not confirmed"])})
+with e:
+    st.write("Confirm what has been prepared inside the platform for the first rollout.")
+    saved_platform={(item.get("Item") or item.get("item")):(item.get("Status") or item.get("status")) for item in loaded.get("platform_preparation",[]) if isinstance(item,dict)}
+    platform_rows=[]
+    for item,question in PLATFORM_ITEMS:
+        default_status=saved_platform.get(item,"Ready and checked" if choice==list(EXAMPLES)[1] else "Not checked")
+        selected=st.selectbox(question,PLATFORM_STATUS,index=PLATFORM_STATUS.index(default_status) if default_status in PLATFORM_STATUS else 0,key=f"platform:{item}:{choice}:{form_key}")
+        platform_rows.append({"Item":item,"Question":question,"Status":selected})
+    st.caption("These are general software-deployment checks. Replace them with the company’s internal setup process when it is available.")
 
 df=flows.copy();df["Status"]=df.apply(status,axis=1); required=df[df["Required before first launch"]=="Yes"]
+platform_df=pd.DataFrame(platform_rows)
+platform_open=platform_df[platform_df["Status"]!="Ready and checked"]
 route,reason=recommend(df,rules,owner); critical=required[required.Status.isin(["Must wait","Temporary route available","Connection required","Needs confirmation"])]
 critical_text="None" if critical.empty else f'{critical.iloc[0]["Information needed"]} from {critical.iloc[0]["Source system"]}'
-items_to_resolve=len(critical)+int(rules!="Documented and confirmed")+int(owner!="Named")
+items_to_resolve=len(critical)+int(rules!="Documented and confirmed")+int(owner!="Named")+len(platform_open)
 
 st.header("2. Recommended rollout plan")
 st.subheader("What this assessment found")
@@ -161,10 +180,11 @@ ready_details=[f'{r["Information needed"]} — {r["Source system"]}, {r["Transfe
 ready_systems=[item for item in ready_required["Source system"].dropna().unique().tolist() if item!="Not confirmed"]
 selected_tasks=[item.lower() for item in capabilities]
 task_text=", ".join(selected_tasks[:-1])+(" and "+selected_tasks[-1] if len(selected_tasks)>1 else selected_tasks[0] if selected_tasks else "the selected tasks")
-testing_ready=critical.empty and rules=="Documented and confirmed" and owner=="Named"
+hospital_ready=critical.empty and rules=="Documented and confirmed" and owner=="Named"
+testing_ready=hospital_ready and platform_open.empty
 if testing_ready:
     system_text=", ".join(ready_systems[:-1])+(" and "+ready_systems[-1] if len(ready_systems)>1 else ready_systems[0] if ready_systems else "the confirmed source systems")
-    recommended_next_move=f"Set up and test these {department} tasks using information from {system_text}: {task_text}."
+    recommended_next_move=f"Run end-to-end tests for {task_text} in {department} using information from {system_text}."
     playbook_name="Existing systems: first-department setup and testing"
 elif not critical.empty:
     first_issue=critical.iloc[0];info_name=first_issue["Information needed"].lower();source_name=first_issue["Source system"]
@@ -176,9 +196,13 @@ elif not critical.empty:
 elif rules!="Documented and confirmed":
     recommended_next_move=f"Confirm the operating rules and exceptions for {task_text} in {department} before setup begins."
     playbook_name="Operating-rule confirmation"
-else:
+elif owner!="Named":
     recommended_next_move="Name the hospital decision-maker before configuration begins."
     playbook_name="Decision ownership"
+else:
+    first_platform=platform_open.iloc[0]
+    recommended_next_move=f'Complete the platform preparation for {department}. Start with: {first_platform["Item"].lower()}.'
+    playbook_name=f'Platform preparation: {first_platform["Item"].lower()}'
 with st.container(border=True):
     st.markdown("**Recommended next move**")
     st.subheader(recommended_next_move)
@@ -193,10 +217,13 @@ if rules!="Documented and confirmed":resolve.append("Confirm the operating rules
 for _,r in critical.iterrows():
     issue_text={"Needs confirmation":"the source or transfer method has not been confirmed","Connection required":"a new connection must be built and tested","Temporary route available":"the source system is changing, but a temporary transfer may be used","Must wait":"the information is unavailable and no alternative has been approved"}[r["Status"]]
     resolve.append(f'{r["Information needed"]} from {r["Source system"]}: {issue_text}.')
+for _,r in platform_open.iterrows():
+    resolve.append(f'{r["Item"]}: {r["Status"].lower()}.')
 ready_summary=[]
 if owner=="Named":ready_summary.append("Hospital decision-maker named")
 if rules=="Documented and confirmed":ready_summary.append("Operating rules and exceptions confirmed")
 ready_summary.extend(ready_details)
+for _,r in platform_df[platform_df["Status"]=="Ready and checked"].iterrows():ready_summary.append(f'Platform: {r["Item"].lower()} ready and checked')
 left,right=st.columns(2,gap="large")
 with left.container(border=True):
     st.markdown("**Confirmed and ready**")
@@ -226,7 +253,16 @@ for _,r in critical.iterrows():
     elif r["Status"]=="Temporary route available":action=f'Agree and test a temporary way to transfer {r["Information needed"].lower()} from {r["Source system"]}.'
     else:action=f'Confirm when {r["Information needed"].lower()} from {r["Source system"]} will be available, or approve another source.'
     plan.append([False,len(plan)+1,action,f'The assessment marked this information as: {r["Status"].lower()}.',"Source-system owner","Hospital IT and the deployment team","Days 4–10; complete before testing"])
-plan.append([False,len(plan)+1,"Test normal work, exceptions and recovery through the complete workflow.","Testing confirms that the configured workflow works with the agreed rules and required information.","Deployment team","Intended users and Hospital IT",f'Do after items 1–{len(plan)}'])
+platform_actions={
+    "Department setup":f"Create the {department} structure and selected scope inside the platform.",
+    "Users and access":f"Add the {department} users and confirm what each role can view, change and approve.",
+    "Operating rules":f"Enter the confirmed {department} scheduling, approval and exception rules in the platform.",
+    "Data mapping":"Match each required hospital field to its destination in the platform and resolve unmatched values.",
+    "Test setup":"Prepare test users, sample data and normal, exception and recovery scenarios.",
+}
+for _,r in platform_open.iterrows():
+    plan.append([False,len(plan)+1,platform_actions[r["Item"]],f'Platform preparation is marked as: {r["Status"].lower()}.',"Deployment team","Product or engineering and the relevant hospital team","Complete before end-to-end testing"])
+plan.append([False,len(plan)+1,"Run normal, exception and recovery scenarios from the source systems through the platform and back to the responsible hospital team.","This confirms that the hospital process, information transfers and platform setup work together.","Deployment team","Intended users, Hospital IT and relevant product or engineering partners",f'Do after items 1–{len(plan)}'])
 st.subheader("Execution tracker")
 st.write("These actions are generated from the assessment above. Update the timing and mark each item complete as the work progresses.")
 plan_df=pd.DataFrame(plan,columns=["Done","Item","Action","Why this action appears","Owner","Supporting parties","Timing / status"])
@@ -258,7 +294,8 @@ with st.expander("View all required information paths"):
 st.header("3. Estimated timeline")
 st.write("Recommended planning time. Edit the ranges when hospital or vendor estimates are available.")
 complexity=int(sites>1)+int(variation!="Same process in first-wave departments")+int(labor=="Union or contract rules apply")+int(profile=="Academic medical center"); connections=int(required.Status.isin(["Connection required","Temporary route available","Must wait","Needs confirmation"]).sum())
-timing=pd.DataFrame([["Workflow discovery",1,2+min(complexity,2),"Access to department operators"],["Rule confirmation",1,1+(2 if rules!="Documented and confirmed" else 0)+(1 if labor=="Union or contract rules apply" else 0),"Observed workflow"],["Information and connection preparation",1,2+connections*2,"Confirmed sources, access and owners"],["Configuration and complete workflow testing",2,3,"Confirmed rules and usable information paths"],["User preparation and controlled launch",1,2,"Completed workflow testing"]],columns=["Work package","Recommended minimum weeks","Recommended maximum weeks","Must be completed first"])
+platform_work=max(1,len(platform_open))
+timing=pd.DataFrame([["Workflow discovery",1,2+min(complexity,2),"Access to department operators"],["Rule confirmation",1,1+(2 if rules!="Documented and confirmed" else 0)+(1 if labor=="Union or contract rules apply" else 0),"Observed workflow"],["Information and connection preparation",1,2+connections*2,"Confirmed sources, access and owners"],["Platform preparation and end-to-end testing",2,3+min(platform_work,3),"Confirmed rules, usable information paths and completed platform setup"],["User preparation and controlled launch",1,2,"Completed end-to-end testing"]],columns=["Work package","Recommended minimum weeks","Recommended maximum weeks","Must be completed first"])
 saved_timing=loaded.get("timeline")
 if saved_timing:
     saved_timing_df=pd.DataFrame(saved_timing)
@@ -329,13 +366,15 @@ watch=watch_df.values.tolist()
 st.header("5. Deployment decision brief")
 states=required.Status.tolist()
 if "Must wait" in states:readiness="Waiting on a required system"
-elif any(s in states for s in ["Temporary route available","Connection required","Needs confirmation"]) or rules!="Documented and confirmed" or owner!="Named":readiness="Preparation required before complete testing"
-else:readiness="Ready to set up the first-department workflow"
+elif any(s in states for s in ["Temporary route available","Connection required","Needs confirmation"]) or rules!="Documented and confirmed" or owner!="Named":readiness="Hospital preparation required before end-to-end testing"
+elif not platform_open.empty:readiness="Platform preparation required before end-to-end testing"
+else:readiness="Ready for end-to-end testing"
 if "Temporary route available" in states:decision_needed="Approve a temporary information transfer for the first department or wait for the permanent source."
 elif "Needs confirmation" in states:decision_needed="Confirm the unresolved information source and transfer method before approving the launch plan."
 elif "Connection required" in states:decision_needed="Confirm who will prepare the required connection and agree its planning time."
 elif owner!="Named":decision_needed="Name the hospital decision-maker for the first scope."
 elif rules!="Documented and confirmed":decision_needed="Confirm the first department's operating rules before setup."
+elif not platform_open.empty:decision_needed=f'Complete and check the remaining platform preparation, starting with {platform_open.iloc[0]["Item"].lower()}.'
 else:decision_needed="Proceed with first-department setup and complete workflow testing."
 critical_package=timing.loc[timing["Recommended maximum weeks"].astype(float).idxmax(),"Work package"]
 st.markdown(f"**Recommended first move**  \n{recommended_next_move}")
@@ -349,7 +388,7 @@ st.markdown("**Before expanding**  \nConfirm that the department is using the wo
 
 st.header("6. Download working files")
 safe_department=re.sub(r"[^a-z0-9]+","_",department.lower()).strip("_") or "department"
-assessment={"selection":choice,"scope":{"solution":solution,"capabilities":capabilities,"department":department,"staff_groups":staff,"hospitals":sites},"hospital_context":{"type":profile,"current_owner":governance,"process_variation":variation,"manual_work":manual,"exceptions":exceptions,"rules":rules,"labor_rules":labor,"decision_owner":owner,"approvers":approvers},"recommended_rollout":{"route":route,"reason":reason,"main_dependency":critical_text,"estimated_timeline_weeks":{"minimum":total[0],"maximum":total[1]}},"information_dependencies":df.to_dict("records"),"action_plan":plan_df.to_dict("records"),"timeline":timing.to_dict("records"),"effort_estimate":effort.to_dict("records"),"expansion_estimate":{"departments":next_departments,"hospitals":next_hospitals,"reuse":reuse,"minimum_weeks":wave_min,"maximum_weeks":wave_max},"potential_issues":[{"potential_issue":r["Potential issue"],"warning_sign":r["Warning sign"],"recommended_response":r["Recommended response"],"review_point":r["Review point"],"likelihood":r["Likelihood"],"impact":r["Impact"],"priority":r["Priority"]} for _,r in watch_df.iterrows()]}
+assessment={"selection":choice,"scope":{"solution":solution,"capabilities":capabilities,"department":department,"staff_groups":staff,"hospitals":sites},"hospital_context":{"type":profile,"current_owner":governance,"process_variation":variation,"manual_work":manual,"exceptions":exceptions,"rules":rules,"labor_rules":labor,"decision_owner":owner,"approvers":approvers},"recommended_rollout":{"route":route,"reason":reason,"main_dependency":critical_text,"estimated_timeline_weeks":{"minimum":total[0],"maximum":total[1]}},"information_dependencies":df.to_dict("records"),"platform_preparation":platform_df.to_dict("records"),"action_plan":plan_df.to_dict("records"),"timeline":timing.to_dict("records"),"effort_estimate":effort.to_dict("records"),"expansion_estimate":{"departments":next_departments,"hospitals":next_hospitals,"reuse":reuse,"minimum_weeks":wave_min,"maximum_weeks":wave_max},"potential_issues":[{"potential_issue":r["Potential issue"],"warning_sign":r["Warning sign"],"recommended_response":r["Recommended response"],"review_point":r["Review point"],"likelihood":r["Likelihood"],"impact":r["Impact"],"priority":r["Priority"]} for _,r in watch_df.iterrows()]}
 e1,e2,e3,e4=st.columns(4)
 e1.download_button("Download action plan",plan_df.to_csv(index=False),f"hospital_deployment_action_plan_{safe_department}.csv","text/csv")
 e2.download_button("Download dependencies",df.to_csv(index=False),f"hospital_deployment_dependencies_{safe_department}.csv","text/csv")
