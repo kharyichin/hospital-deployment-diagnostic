@@ -355,6 +355,7 @@ st.write("Use the standard playbook where it applies. Record what is different i
 plan_df=pd.DataFrame(plan,columns=["Done","Item","Action","Why this action appears","Owner","Supporting parties","Timing / status"])
 def playbook_step(action):
     action=action.lower()
+    if action.startswith("run normal, exception and recovery scenarios"):return "First-ward testing and launch"
     if any(word in action for word in ["observe","compare","confirm how","map the manual"]):return "Discovery"
     if any(word in action for word in ["rule","decision-maker","source","transfer","connection","create the","add the","enter the","match each","prepare test"]):return "System and rule alignment"
     return "First-ward testing and launch"
