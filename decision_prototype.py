@@ -1,12 +1,13 @@
 import json
 import re
+import html
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Hospital Deployment Planning Diagnostic",layout="wide")
-st.markdown("<style>.block-container{max-width:1280px;padding-top:2rem}h1,h2,h3{letter-spacing:-.025em}[data-testid='stMetric']{background:#f4f8f7;border:1px solid #d6e3df;padding:14px;border-radius:8px}</style>",unsafe_allow_html=True)
+st.markdown("<style>.block-container{max-width:1280px;padding-top:2rem}h1,h2,h3{letter-spacing:-.025em}[data-testid='stMetric']{background:#f4f8f7;border:1px solid #d6e3df;padding:14px;border-radius:8px}.ready-group{border-left:4px solid var(--group);background:var(--tint);padding:10px 12px;margin:8px 0;border-radius:4px}.ready-group strong{color:var(--text);display:block;margin-bottom:5px}.ready-item{color:#24343b;line-height:1.45;margin:2px 0}.ready-item span{color:var(--text);font-weight:700;margin-right:6px}</style>",unsafe_allow_html=True)
 
 EXAMPLES={
  "Current assessment":("Not selected","Not confirmed","Not confirmed","Not confirmed"),
@@ -287,18 +288,26 @@ for _,r in critical.iterrows():
     resolve.append(f'{r["Information needed"]} from {r["Source system"]}: {issue_text}.')
 for _,r in platform_open.iterrows():
     resolve.append(f'{r["Item"]}: {r["Status"].lower()}.')
-ready_summary=[]
-if owner=="Named":ready_summary.append("Hospital decision-maker named")
-if rules=="Documented and confirmed":ready_summary.append("Operating rules and exceptions confirmed")
-if not scope_unknown:ready_summary.append(f"Current {solution.lower()} workflow described")
-if labor=="No union or contract rules identified" or labor_confirmation=="Confirmed with Labor Relations":ready_summary.append("Employment-rule requirements confirmed")
-ready_summary.extend(ready_details)
-for _,r in platform_df[platform_df["Status"]=="Ready and checked"].iterrows():ready_summary.append(f'Platform: {r["Item"].lower()} ready and checked')
+ready_groups={
+    "Governance":{"colors":["#7452A3","#F1ECF7","#493269"],"items":[]},
+    "Workflow and rules":{"colors":["#B36B00","#FFF3DC","#704300"],"items":[]},
+    "Information connections":{"colors":["#287C9B","#E8F4F8","#18556C"],"items":ready_details.copy()},
+    "Platform setup":{"colors":["#27805A","#E7F4ED","#18563D"],"items":[]},
+}
+if owner=="Named":ready_groups["Governance"]["items"].append("Hospital decision-maker named")
+if rules=="Documented and confirmed":ready_groups["Workflow and rules"]["items"].append("Operating rules and exceptions confirmed")
+if not scope_unknown:ready_groups["Workflow and rules"]["items"].append(f"Current {solution.lower()} workflow described")
+if labor=="No union or contract rules identified" or labor_confirmation=="Confirmed with Labor Relations":ready_groups["Workflow and rules"]["items"].append("Employment-rule requirements confirmed")
+for _,r in platform_df[platform_df["Status"]=="Ready and checked"].iterrows():ready_groups["Platform setup"]["items"].append(f'{r["Item"]} ready and checked')
 left,right=st.columns(2,gap="large")
 with left.container(border=True):
     st.markdown("**Confirmed and ready**")
-    if ready_summary:
-        for item in ready_summary:st.write(f"✓ {item}")
+    populated_groups={name:group for name,group in ready_groups.items() if group["items"]}
+    if populated_groups:
+        for name,group in populated_groups.items():
+            accent,tint,text_color=group["colors"]
+            items="".join(f'<div class="ready-item"><span>✓</span>{html.escape(str(item))}</div>' for item in group["items"])
+            st.markdown(f'<div class="ready-group" style="--group:{accent};--tint:{tint};--text:{text_color}"><strong>{html.escape(name)}</strong>{items}</div>',unsafe_allow_html=True)
     else:st.write("Nothing has been confirmed as ready.")
 with right.container(border=True):
     st.markdown("**Needs attention before complete testing**")
