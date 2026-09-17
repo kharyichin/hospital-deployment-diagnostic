@@ -140,6 +140,14 @@ with b:
     manual=y.multiselect("How is this work completed today?",manual_options,default=[item for item in loaded_context.get("manual_work",["None identified"] if choice==list(EXAMPLES)[1] else ["Spreadsheets"]) if item in manual_options],key=f"manual:{form_key}")
     variation_options=["Same process in first-wave departments","Some local differences","Process differs by department","Not confirmed"];variation_default=loaded_context.get("process_variation",variation_options[0])
     variation=y.selectbox("Does the process differ between departments?",variation_options,index=variation_options.index(variation_default) if variation_default in variation_options else 3,key=f"variation:{form_key}")
+    variation_details=""
+    if variation in ["Some local differences","Process differs by department"]:
+        variation_details=y.text_area(
+            "What differs between departments?",
+            value=loaded_context.get("process_variation_details",""),
+            placeholder="Example: ICU shift swaps require charge-nurse approval, while medical wards allow manager approval.",
+            key=f"variation_details:{form_key}",
+        )
     exception_options=["Sick calls","Vacant shifts","Shift swaps","Overtime approval","Float staff","Staff reassignment","Downtime or connection failure","Not confirmed"]
     exceptions=y.multiselect("Which situations regularly require manual decisions?",exception_options,default=[item for item in loaded_context.get("exceptions",["Vacant shifts"]) if item in exception_options],key=f"exceptions:{form_key}")
 with c:
@@ -245,6 +253,9 @@ with st.container(border=True):
     playbook_right.button("Open playbook",disabled=True,use_container_width=True,help="Placeholder for an internal knowledge-base or workflow link.")
 
 plan=[[False,1,"Observe the current workflow, exceptions and baseline for the selected scope.","Every rollout needs an observed starting point before configuration.","Deployment team","Hospital operations and intended users","Days 1–3"]]
+if variation in ["Some local differences","Process differs by department"]:
+    difference_reason=variation_details.strip() or "The assessment reports differences between departments, but they have not been described yet."
+    plan.append([False,len(plan)+1,"Compare the affected departments and document which rules, approvals and exceptions require a different setup.",difference_reason,"Deployment team","Department managers and intended users","Do together with item 1"])
 if owner!="Named":plan.append([False,len(plan)+1,"Name the hospital decision-maker for the first rollout.","The assessment does not have a confirmed decision owner.","Hospital sponsor","Deployment team and department leadership","Days 1–3"])
 if rules!="Documented and confirmed":plan.append([False,len(plan)+1,"Confirm the first department's operating rules and exceptions.",f'Current rules are recorded as: {rules.lower()}.' ,"Deployment team","Department managers and Nursing operations"+("; Labor Relations" if labor=="Union or contract rules apply" else ""),"Days 4–7"])
 for _,r in critical.iterrows():
@@ -341,7 +352,7 @@ with st.expander("Estimate a later rollout wave"):
 
 st.header("4. Potential issues and flags")
 watch=[]
-if variation!="Same process in first-wave departments":watch.append(["Department variation","Managers describe different rules or exceptions for the same work.","Compare first-wave departments before copying a configuration.","Before configuration","Likely","Major"])
+if variation!="Same process in first-wave departments":watch.append(["Department variation",variation_details.strip() or "The departments may use different rules, approvals or exceptions for the same work.","Compare first-wave departments before copying a configuration.","Before configuration","Likely","Major"])
 if labor=="Union or contract rules apply":watch.append(["Union and employment agreement requirements","The observed shift-bidding order, minimum rest period, overtime rule or approval process differs from the applicable agreement.","Review the specific requirement with Labor Relations and update the workflow before configuration.","While confirming operating rules","Possible","Major"])
 if governance=="Department-level managers":watch.append(["Uneven local adoption","Departments continue using calls, texts or spreadsheets after testing.","Include department managers in observation, testing and issue review.","During testing and first launch","Possible","Moderate"])
 if not watch:watch=[["Local workflow mismatch","The selected department behaves differently from the reported process.","Update the workflow and rules before complete testing.","During observation and testing","Possible","Moderate"]]
@@ -388,7 +399,7 @@ st.markdown("**Before expanding**  \nConfirm that the department is using the wo
 
 st.header("6. Download working files")
 safe_department=re.sub(r"[^a-z0-9]+","_",department.lower()).strip("_") or "department"
-assessment={"selection":choice,"scope":{"solution":solution,"capabilities":capabilities,"department":department,"staff_groups":staff,"hospitals":sites},"hospital_context":{"type":profile,"current_owner":governance,"process_variation":variation,"manual_work":manual,"exceptions":exceptions,"rules":rules,"labor_rules":labor,"decision_owner":owner,"approvers":approvers},"recommended_rollout":{"route":route,"reason":reason,"main_dependency":critical_text,"estimated_timeline_weeks":{"minimum":total[0],"maximum":total[1]}},"information_dependencies":df.to_dict("records"),"platform_preparation":platform_df.to_dict("records"),"action_plan":plan_df.to_dict("records"),"timeline":timing.to_dict("records"),"effort_estimate":effort.to_dict("records"),"expansion_estimate":{"departments":next_departments,"hospitals":next_hospitals,"reuse":reuse,"minimum_weeks":wave_min,"maximum_weeks":wave_max},"potential_issues":[{"potential_issue":r["Potential issue"],"warning_sign":r["Warning sign"],"recommended_response":r["Recommended response"],"review_point":r["Review point"],"likelihood":r["Likelihood"],"impact":r["Impact"],"priority":r["Priority"]} for _,r in watch_df.iterrows()]}
+assessment={"selection":choice,"scope":{"solution":solution,"capabilities":capabilities,"department":department,"staff_groups":staff,"hospitals":sites},"hospital_context":{"type":profile,"current_owner":governance,"process_variation":variation,"process_variation_details":variation_details,"manual_work":manual,"exceptions":exceptions,"rules":rules,"labor_rules":labor,"decision_owner":owner,"approvers":approvers},"recommended_rollout":{"route":route,"reason":reason,"main_dependency":critical_text,"estimated_timeline_weeks":{"minimum":total[0],"maximum":total[1]}},"information_dependencies":df.to_dict("records"),"platform_preparation":platform_df.to_dict("records"),"action_plan":plan_df.to_dict("records"),"timeline":timing.to_dict("records"),"effort_estimate":effort.to_dict("records"),"expansion_estimate":{"departments":next_departments,"hospitals":next_hospitals,"reuse":reuse,"minimum_weeks":wave_min,"maximum_weeks":wave_max},"potential_issues":[{"potential_issue":r["Potential issue"],"warning_sign":r["Warning sign"],"recommended_response":r["Recommended response"],"review_point":r["Review point"],"likelihood":r["Likelihood"],"impact":r["Impact"],"priority":r["Priority"]} for _,r in watch_df.iterrows()]}
 e1,e2,e3,e4=st.columns(4)
 e1.download_button("Download action plan",plan_df.to_csv(index=False),f"hospital_deployment_action_plan_{safe_department}.csv","text/csv")
 e2.download_button("Download dependencies",df.to_csv(index=False),f"hospital_deployment_dependencies_{safe_department}.csv","text/csv")
