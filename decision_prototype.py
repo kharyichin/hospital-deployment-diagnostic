@@ -279,15 +279,22 @@ m2.metric("Required information reported ready",f'{len(ready_required)} of {len(
 m3.metric("Items to resolve before complete testing",items_to_resolve)
 
 resolve=[]
-if owner!="Named":resolve.append("Name the hospital decision-maker for this rollout.")
-if rules!="Documented and confirmed":resolve.append("Confirm the operating rules and exceptions used by the first department.")
-if scope_unknown:resolve.append(f"Confirm the unanswered questions about how {solution.lower()} works today.")
-if labor_work:resolve.append("Confirm the covered staff groups and employment requirements with Labor Relations.")
+attention_groups={
+    "Governance":{"colors":["#7452A3","#F1ECF7","#493269"],"items":[]},
+    "Workflow and rules":{"colors":["#B36B00","#FFF3DC","#704300"],"items":[]},
+    "Information connections":{"colors":["#287C9B","#E8F4F8","#18556C"],"items":[]},
+    "Platform setup":{"colors":["#27805A","#E7F4ED","#18563D"],"items":[]},
+}
+if owner!="Named":attention_groups["Governance"]["items"].append("Name the hospital decision-maker for this rollout.")
+if rules!="Documented and confirmed":attention_groups["Workflow and rules"]["items"].append("Confirm the operating rules and exceptions used by the first department.")
+if scope_unknown:attention_groups["Workflow and rules"]["items"].append(f"Confirm the unanswered questions about how {solution.lower()} works today.")
+if labor_work:attention_groups["Workflow and rules"]["items"].append("Confirm the covered staff groups and employment requirements with Labor Relations.")
 for _,r in critical.iterrows():
     issue_text={"Needs confirmation":"the source or transfer method has not been confirmed","Connection required":"a new connection must be built and tested","Temporary route available":"the source system is changing, but a temporary transfer may be used","Must wait":"the information is unavailable and no alternative has been approved"}[r["Status"]]
-    resolve.append(f'{r["Information needed"]} from {r["Source system"]}: {issue_text}.')
+    attention_groups["Information connections"]["items"].append(f'{r["Information needed"]} from {r["Source system"]}: {issue_text}.')
 for _,r in platform_open.iterrows():
-    resolve.append(f'{r["Item"]}: {r["Status"].lower()}.')
+    attention_groups["Platform setup"]["items"].append(f'{r["Item"]}: {r["Status"].lower()}.')
+resolve=[item for group in attention_groups.values() for item in group["items"]]
 ready_groups={
     "Governance":{"colors":["#7452A3","#F1ECF7","#493269"],"items":[]},
     "Workflow and rules":{"colors":["#B36B00","#FFF3DC","#704300"],"items":[]},
@@ -312,7 +319,11 @@ with left.container(border=True):
 with right.container(border=True):
     st.markdown("**Needs attention before complete testing**")
     if resolve:
-        for item in resolve:st.write(f"• {item}")
+        for name,group in attention_groups.items():
+            if not group["items"]:continue
+            accent,tint,text_color=group["colors"]
+            items="".join(f'<div class="ready-item"><span>!</span>{html.escape(str(item))}</div>' for item in group["items"])
+            st.markdown(f'<div class="ready-group" style="--group:{accent};--tint:{tint};--text:{text_color}"><strong>{html.escape(name)}</strong>{items}</div>',unsafe_allow_html=True)
     else:st.write("No outstanding items identified from the current answers.")
 
 with st.container(border=True):
